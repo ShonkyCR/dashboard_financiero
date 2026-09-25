@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="pantalla-login">
     <form method="post" action="login.php" class="tarjeta login-tarjeta">
-        <div class="flex justify-end mb-4">
+        <div class="login-fila-tema">
             <button type="button" data-tema-toggle class="btn-tema-toggle" aria-label="Alternar tema" title="Alternar tema">
                 <svg class="icono-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
                 <svg class="icono-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -66,33 +66,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <img src="<?= htmlspecialchars($config['logo']) ?>" alt="Logo de <?= htmlspecialchars($config['nombre_negocio'] ?? '') ?>" class="logo-visual logo-login">
         <?php endif; ?>
 
-        <p class="etiqueta-mono font-mono text-xs uppercase tracking-wide" style="color:var(--color-ink-soft)"><?= htmlspecialchars($config['nombre_negocio'] ?? 'Panel de gestión') ?></p>
-        <h1 class="font-display text-2xl font-semibold mt-1 mb-1">Iniciar sesión</h1>
-        <p class="text-sm mb-5" style="color:var(--color-ink-soft)">Entra con tu cuenta de dueño o de superadmin.</p>
+        <p class="etiqueta-mono login-eyebrow"><?= htmlspecialchars($config['nombre_negocio'] ?? 'Panel de gestión') ?></p>
+        <h1 class="font-display login-titulo">Iniciar sesión</h1>
+        <p class="login-sub">Entra con tu cuenta de dueño o de superadmin.</p>
 
         <?php if ($error): ?>
-            <div class="aviso aviso-error mb-4"><?= htmlspecialchars($error) ?></div>
+            <div class="aviso aviso-error login-aviso"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
-        <div class="mb-3">
-            <label class="text-sm font-medium block mb-1" for="email">Correo</label>
+        <div class="login-campo">
+            <label for="email">Correo</label>
             <input type="email" id="email" name="email" required autofocus
                    value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
-                   autocomplete="username" class="campo-claro">
+                   autocomplete="username" class="campo-claro" placeholder="tu@correo.com">
         </div>
 
-        <div class="mb-5">
-            <label class="text-sm font-medium block mb-1" for="password">Contraseña</label>
+        <div class="login-campo">
+            <label for="password">Contraseña</label>
             <input type="password" id="password" name="password" required
-                   autocomplete="current-password" class="campo-claro">
+                   autocomplete="current-password" class="campo-claro" placeholder="••••••••">
         </div>
 
-        <button type="submit" class="w-full rounded-full py-3 font-semibold text-sm"
-                style="background:var(--color-ink); color:var(--color-paper)">
-            Entrar
+        <button type="submit" class="btn-entrar" id="btn-entrar">
+            <span class="btn-entrar-texto">Entrar</span>
+            <svg class="flecha" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
         </button>
 
-        <p class="text-xs mt-5" style="color:var(--color-ink-soft)">
+        <p class="login-nota">
             Cuentas de prueba: <strong>dueno@demo.com</strong> / dueno123 ·
             <strong>super@demo.com</strong> / super123
         </p>
@@ -113,5 +113,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div id="toast" class="toast"></div>
 <script src="assets/js/main.js"></script>
+<script>
+(function() {
+    var form = document.querySelector('.login-tarjeta');
+    var btn = document.getElementById('btn-entrar');
+    if (!form || !btn) return;
+    form.addEventListener('submit', function(e) {
+        if (btn.classList.contains('enviando')) { e.preventDefault(); return; }
+        btn.classList.add('enviando');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Entrando…</span>';
+    });
+})();
+</script>
 </body>
 </html>
