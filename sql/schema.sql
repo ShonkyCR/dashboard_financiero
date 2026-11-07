@@ -33,7 +33,7 @@ CREATE TABLE transacciones (
     contacto_id        INT          DEFAULT NULL,
     origen             ENUM('manual', 'planilla') NOT NULL DEFAULT 'manual',
     colaborador_id     INT          DEFAULT NULL,
-    frecuencia_planilla ENUM('mes', 'quincena', 'hora') DEFAULT NULL,
+    frecuencia_planilla ENUM('mes', 'quincena', 'semana', 'hora') DEFAULT NULL,
     creado_en          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -75,7 +75,7 @@ CREATE TABLE colaboradores (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     nombre      VARCHAR(120) NOT NULL,
     puesto      VARCHAR(80)  DEFAULT NULL,
-    tipo_pago   ENUM('hora', 'quincena', 'mes') NOT NULL DEFAULT 'mes',
+    tipo_pago   ENUM('hora', 'semana', 'quincena', 'mes') NOT NULL DEFAULT 'mes',
     tarifa      DECIMAL(12,2) NOT NULL DEFAULT 0,
     activo      TINYINT(1) NOT NULL DEFAULT 1,
     creado_en   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -102,13 +102,15 @@ CREATE TABLE contactos (
 -- Configuración del negocio
 -- =========================================================
 CREATE TABLE configuracion (
-    id              INT PRIMARY KEY DEFAULT 1,
-    nombre_negocio  VARCHAR(120) DEFAULT 'Mi Negocio',
-    nombre_admin    VARCHAR(120) DEFAULT NULL,
-    email_admin     VARCHAR(120) DEFAULT NULL,
-    telefono_admin  VARCHAR(40)  DEFAULT NULL,
-    tema            ENUM('claro', 'oscuro') NOT NULL DEFAULT 'claro',
-    logo            VARCHAR(255) DEFAULT NULL
+    id                 INT PRIMARY KEY DEFAULT 1,
+    nombre_negocio     VARCHAR(120) DEFAULT 'Mi Negocio',
+    nombre_admin       VARCHAR(120) DEFAULT NULL,
+    email_admin        VARCHAR(120) DEFAULT NULL,
+    telefono_admin     VARCHAR(40)  DEFAULT NULL,
+    tema               ENUM('claro', 'oscuro') NOT NULL DEFAULT 'claro',
+    logo               VARCHAR(255) DEFAULT NULL,
+    categorias_ingreso TEXT DEFAULT NULL,
+    categorias_gasto   TEXT DEFAULT NULL
 ) ENGINE=InnoDB;
 
 INSERT INTO configuracion (id, nombre_negocio, nombre_admin) VALUES (1, 'Remodelaciones Rivera', 'Dueño Demo');

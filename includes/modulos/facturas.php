@@ -61,7 +61,7 @@ ob_start();
 ?>
 <div class="flex items-start justify-between flex-wrap gap-3 mb-6">
     <div class="min-w-0">
-        <p class="etiqueta-mono">Pagos de clientes</p>
+        <p class="etiqueta-mono">Ingresos por clientes</p>
         <h2 class="font-display text-xl font-semibold mt-1"><?= htmlspecialchars($nombreMes) ?></h2>
         <p class="text-xs mt-1" style="color:var(--color-ink-soft)">
             Facturas y cobros. Los ingresos del Registro rápido del dashboard también aparecen aquí como pagadas.

@@ -22,7 +22,7 @@ $enlaces = [
     ],
     [
         'clave' => 'facturas',
-        'texto' => 'Pagos de clientes',
+        'texto' => 'Ingresos por clientes',
         'href' => 'modulo.php?p=facturas',
         'icono' => '<path d="M6 3h9l4 4v14H6V3Z"/><path d="M15 3v4h4"/><path d="M9 12h6"/><path d="M9 16h6"/><path d="M9 8h2"/>',
     ],

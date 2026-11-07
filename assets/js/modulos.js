@@ -153,6 +153,7 @@ function cerrarModalFactura() {
 /* ---------------- Planilla ---------------- */
 const etiquetasTarifaPorTipo = {
     hora: '¿Cuánto se paga por hora?',
+    semana: 'Monto por semana',
     quincena: 'Monto por quincena',
     mes: 'Monto mensual',
 };

@@ -43,7 +43,7 @@ $transacciones = obtenerTransacciones($pdo, [
 $promedioGastos = obtenerPromedioGastos($pdo);
 $umbralAtipico = $promedioGastos * 1.5; // gasto se marca atípico si supera 1.5x el promedio
 $categoriasUsadas = obtenerCategoriasUsadas($pdo);
-$categorias = categoriasDisponibles();
+$categorias = categoriasDisponibles($pdo);
 
 $s = $resumen['semaforo'];
 $config = obtenerConfiguracion($pdo);
@@ -140,6 +140,18 @@ $etiquetaSegundoModo = $esSuperadmin ? 'Detalle (auditoría)' : 'Movimientos';
         </header>
 
         <main class="max-w-6xl mx-auto px-5 py-8 animar-entrada">
+
+        <!-- Banner de bienvenida motivacional -->
+        <div class="bienvenida-banner mb-6 p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4" style="background: var(--color-paper-card); border: 1px solid var(--color-line); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+            <div>
+                <p class="etiqueta-mono font-mono text-[0.68rem] uppercase tracking-wide" style="color:var(--color-gold)">Panel de gestión</p>
+                <h2 class="font-display text-xl sm:text-2xl font-bold mt-0.5">Bienvenido a tu Dashboard Administrativo</h2>
+            </div>
+            <div class="cita-motivacional px-4 py-2 rounded-xl text-sm font-medium italic flex items-center gap-2 self-start md:self-auto" style="background: rgba(201, 162, 39, 0.1); border: 1px solid rgba(201, 162, 39, 0.25); color: var(--color-ink);">
+                <span style="color: var(--color-gold); font-size: 1.15rem; font-style: normal;">💡</span>
+                <span>«Lo que no se mide no se mejora»</span>
+            </div>
+        </div>
 
     <!-- =====================================================
          MODO RESUMEN — Vista Dueño (lenguaje simple)

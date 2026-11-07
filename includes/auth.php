@@ -42,10 +42,14 @@ function esSuperadmin(): bool
  * faltan (migración suave) y siembra los usuarios de ejemplo cuando
  * la tabla queda vacía. Se ejecuta una sola vez por petición.
  */
-function asegurarEsquemaAuth(PDO $pdo): void
+function asegurarEsquemaAuth(PDO $pdo, bool $forzar = false): void
 {
     static $hecho = false;
-    if ($hecho) {
+    if ($hecho && !$forzar) {
+        return;
+    }
+    if (!$forzar && !empty($_SESSION['auth_esquema_listo'])) {
+        $hecho = true;
         return;
     }
     $hecho = true;
@@ -68,7 +72,7 @@ function asegurarEsquemaAuth(PDO $pdo): void
         'ALTER TABLE transacciones ADD COLUMN contacto_id INT DEFAULT NULL',
         'ALTER TABLE transacciones ADD COLUMN origen ENUM(\'manual\', \'planilla\') NOT NULL DEFAULT \'manual\'',
         'ALTER TABLE transacciones ADD COLUMN colaborador_id INT DEFAULT NULL',
-        'ALTER TABLE transacciones ADD COLUMN frecuencia_planilla ENUM(\'mes\', \'quincena\', \'hora\') DEFAULT NULL',
+        'ALTER TABLE transacciones MODIFY COLUMN frecuencia_planilla ENUM(\'mes\', \'quincena\', \'semana\', \'hora\') DEFAULT NULL',
         'ALTER TABLE contactos ADD COLUMN proyecto_finalizado TINYINT(1) NOT NULL DEFAULT 0',
     ] as $sqlAlter) {
         try {
@@ -76,6 +80,10 @@ function asegurarEsquemaAuth(PDO $pdo): void
         } catch (Throwable $e) {
             // La columna ya existe: se ignora.
         }
+    }
+
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        $_SESSION['auth_esquema_listo'] = true;
     }
 
     // Usuarios de ejemplo solo si nadie se ha registrado todavía

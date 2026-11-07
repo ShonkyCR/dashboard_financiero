@@ -28,7 +28,7 @@ $modulosConLogica = ['facturas', 'gastos', 'planilla', 'clientes', 'reportes', '
 $modulosSoloSuperadmin = ['auditoria'];
 
 $titulos = [
-    'facturas'      => 'Pagos de clientes',
+    'facturas'      => 'Ingresos por clientes',
     'gastos'        => 'Gastos',
     'planilla'      => 'Control de planilla',
     'clientes'      => 'Clientes / Proveedores',

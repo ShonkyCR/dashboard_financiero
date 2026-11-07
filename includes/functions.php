@@ -12,12 +12,51 @@ declare(strict_types=1);
  * Ajustadas al rubro objetivo: negocios de remodelación,
  * construcción y limpieza en EE. UU.
  */
-function categoriasDisponibles(): array
+function categoriasDisponibles(?PDO $pdo = null): array
 {
-    return [
+    static $cacheCategorias = null;
+    if ($cacheCategorias !== null && $pdo === null) {
+        return $cacheCategorias;
+    }
+
+    $defecto = [
         'ingreso' => ['Remodelación', 'Construcción', 'Limpieza', 'Otros ingresos'],
         'gasto'   => ['Materiales', 'Nómina', 'Contratistas', 'Mantenimiento de maquinaria', 'Transporte', 'Seguros y permisos', 'Servicios públicos', 'Marketing', 'Otros gastos'],
     ];
+
+    if ($pdo === null && function_exists('conectarDB')) {
+        try {
+            $pdo = conectarDB();
+        } catch (Throwable $e) {
+            $pdo = null;
+        }
+    }
+
+    if ($pdo instanceof PDO) {
+        try {
+            $config = obtenerConfiguracion($pdo);
+            $catIngreso = trim((string)($config['categorias_ingreso'] ?? ''));
+            $catGasto = trim((string)($config['categorias_gasto'] ?? ''));
+
+            $listaIngreso = $catIngreso !== ''
+                ? array_values(array_filter(array_map('trim', explode(',', $catIngreso))))
+                : $defecto['ingreso'];
+            $listaGasto = $catGasto !== ''
+                ? array_values(array_filter(array_map('trim', explode(',', $catGasto))))
+                : $defecto['gasto'];
+
+            $cacheCategorias = [
+                'ingreso' => !empty($listaIngreso) ? $listaIngreso : $defecto['ingreso'],
+                'gasto'   => !empty($listaGasto) ? $listaGasto : $defecto['gasto'],
+            ];
+            return $cacheCategorias;
+        } catch (Throwable $e) {
+            // fallback al valor por defecto
+        }
+    }
+
+    $cacheCategorias = $defecto;
+    return $cacheCategorias;
 }
 
 /** Categorías de gasto que representan costo de personal. */
@@ -628,6 +667,7 @@ function calcularCostoMensualPlanilla(array $colaboradores): float
         $tarifa = (float) $c['tarifa'];
         $total += match ($c['tipo_pago']) {
             'hora' => $tarifa * $horasMesReferencia,
+            'semana' => $tarifa * 4,
             'quincena' => $tarifa * 2,
             default => $tarifa, // 'mes'
         };
@@ -651,6 +691,32 @@ function pagosPlanillaEnMes(array $colaborador, string $mes): array
     $frecuencia = (string) $colaborador['tipo_pago'];
 
     return match ($frecuencia) {
+        'semana' => [
+            [
+                'fecha' => $mes . '-07',
+                'monto' => $tarifa,
+                'descripcion' => 'Pago semanal 1 — ' . $nombre,
+                'frecuencia' => 'semana',
+            ],
+            [
+                'fecha' => $mes . '-14',
+                'monto' => $tarifa,
+                'descripcion' => 'Pago semanal 2 — ' . $nombre,
+                'frecuencia' => 'semana',
+            ],
+            [
+                'fecha' => $mes . '-21',
+                'monto' => $tarifa,
+                'descripcion' => 'Pago semanal 3 — ' . $nombre,
+                'frecuencia' => 'semana',
+            ],
+            [
+                'fecha' => $mes . '-28',
+                'monto' => $tarifa,
+                'descripcion' => 'Pago semanal 4 — ' . $nombre,
+                'frecuencia' => 'semana',
+            ],
+        ],
         'quincena' => [
             [
                 'fecha' => $mes . '-01',
@@ -840,6 +906,7 @@ function desglosePlanillaEnMes(PDO $pdo, string $mes): array
     $etiquetas = [
         'mes' => 'Mensual',
         'quincena' => 'Quincenal',
+        'semana' => 'Semanal',
         'hora' => 'Por hora',
     ];
     $porFrecuencia = [];
@@ -1136,8 +1203,18 @@ function obtenerComparativoMensual(PDO $pdo, ?string $mes = null, ?int $contacto
    ========================================================= */
 
 /** Crea las tablas faltantes si la base de datos aún no ha sido migrada por completo. */
-function asegurarTablasBaseDeDatos(PDO $pdo): void
+function asegurarTablasBaseDeDatos(PDO $pdo, bool $forzar = false): void
 {
+    static $hecho = false;
+    if ($hecho && !$forzar) {
+        return;
+    }
+    if (!$forzar && !empty($_SESSION['tablas_esquema_listo'])) {
+        $hecho = true;
+        return;
+    }
+    $hecho = true;
+
     $sqls = [
         "CREATE TABLE IF NOT EXISTS transacciones (
             id                 INT AUTO_INCREMENT PRIMARY KEY,
@@ -1149,7 +1226,7 @@ function asegurarTablasBaseDeDatos(PDO $pdo): void
             contacto_id        INT          DEFAULT NULL,
             origen             ENUM('manual', 'planilla') NOT NULL DEFAULT 'manual',
             colaborador_id     INT          DEFAULT NULL,
-            frecuencia_planilla ENUM('mes', 'quincena', 'hora') DEFAULT NULL,
+            frecuencia_planilla ENUM('mes', 'quincena', 'semana', 'hora') DEFAULT NULL,
             creado_en          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB",
 
@@ -1171,7 +1248,7 @@ function asegurarTablasBaseDeDatos(PDO $pdo): void
             id          INT AUTO_INCREMENT PRIMARY KEY,
             nombre      VARCHAR(120) NOT NULL,
             puesto      VARCHAR(80)  DEFAULT NULL,
-            tipo_pago   ENUM('hora', 'quincena', 'mes') NOT NULL DEFAULT 'mes',
+            tipo_pago   ENUM('hora', 'semana', 'quincena', 'mes') NOT NULL DEFAULT 'mes',
             tarifa      DECIMAL(12,2) NOT NULL DEFAULT 0,
             activo      TINYINT(1) NOT NULL DEFAULT 1,
             creado_en   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -1192,13 +1269,15 @@ function asegurarTablasBaseDeDatos(PDO $pdo): void
         ) ENGINE=InnoDB",
 
         "CREATE TABLE IF NOT EXISTS configuracion (
-            id              INT PRIMARY KEY DEFAULT 1,
-            nombre_negocio  VARCHAR(120) DEFAULT 'Mi Negocio',
-            nombre_admin    VARCHAR(120) DEFAULT NULL,
-            email_admin     VARCHAR(120) DEFAULT NULL,
-            telefono_admin  VARCHAR(40)  DEFAULT NULL,
-            tema            ENUM('claro', 'oscuro') NOT NULL DEFAULT 'claro',
-            logo            VARCHAR(255) DEFAULT NULL
+            id                 INT PRIMARY KEY DEFAULT 1,
+            nombre_negocio     VARCHAR(120) DEFAULT 'Mi Negocio',
+            nombre_admin       VARCHAR(120) DEFAULT NULL,
+            email_admin        VARCHAR(120) DEFAULT NULL,
+            telefono_admin     VARCHAR(40)  DEFAULT NULL,
+            tema               ENUM('claro', 'oscuro') NOT NULL DEFAULT 'claro',
+            logo               VARCHAR(255) DEFAULT NULL,
+            categorias_ingreso TEXT DEFAULT NULL,
+            categorias_gasto   TEXT DEFAULT NULL
         ) ENGINE=InnoDB",
 
         "INSERT IGNORE INTO configuracion (id, nombre_negocio) VALUES (1, 'Mi Negocio')"
@@ -1212,22 +1291,29 @@ function asegurarTablasBaseDeDatos(PDO $pdo): void
         }
     }
 
-    // Migración suave: agrega columnas nuevas a tablas ya existentes.
+    // Migración suave: agrega columnas nuevas y actualiza enums si es necesario
     foreach ([
         'ALTER TABLE configuracion ADD COLUMN logo VARCHAR(255) DEFAULT NULL',
+        'ALTER TABLE configuracion ADD COLUMN categorias_ingreso TEXT DEFAULT NULL',
+        'ALTER TABLE configuracion ADD COLUMN categorias_gasto TEXT DEFAULT NULL',
         'ALTER TABLE transacciones ADD COLUMN contacto_id INT DEFAULT NULL',
         'ALTER TABLE transacciones ADD COLUMN origen ENUM(\'manual\', \'planilla\') NOT NULL DEFAULT \'manual\'',
         'ALTER TABLE transacciones ADD COLUMN colaborador_id INT DEFAULT NULL',
-        'ALTER TABLE transacciones ADD COLUMN frecuencia_planilla ENUM(\'mes\', \'quincena\', \'hora\') DEFAULT NULL',
+        'ALTER TABLE transacciones MODIFY COLUMN frecuencia_planilla ENUM(\'mes\', \'quincena\', \'semana\', \'hora\') DEFAULT NULL',
         'ALTER TABLE facturas ADD COLUMN contacto_id INT DEFAULT NULL',
         'ALTER TABLE facturas ADD COLUMN transaccion_id INT DEFAULT NULL',
         'ALTER TABLE contactos ADD COLUMN proyecto_finalizado TINYINT(1) NOT NULL DEFAULT 0',
+        'ALTER TABLE colaboradores MODIFY COLUMN tipo_pago ENUM(\'hora\', \'semana\', \'quincena\', \'mes\') NOT NULL DEFAULT \'mes\'',
     ] as $sqlAlter) {
         try {
             $pdo->exec($sqlAlter);
         } catch (Throwable $e) {
-            // La columna ya existe: se ignora.
+            // La columna ya existe o ya está actualizada: se ignora.
         }
+    }
+
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        $_SESSION['tablas_esquema_listo'] = true;
     }
 }
 
@@ -1270,39 +1356,37 @@ function obtenerConfiguracion(PDO $pdo): array
 
 function guardarConfiguracion(PDO $pdo, array $datos): bool
 {
+    $campos = [
+        'nombre_negocio = :nombre_negocio',
+        'nombre_admin = :nombre_admin',
+        'email_admin = :email_admin',
+        'telefono_admin = :telefono_admin',
+        'tema = :tema',
+    ];
+    $params = [
+        ':nombre_negocio' => $datos['nombre_negocio'] ?: 'Mi Negocio',
+        ':nombre_admin' => $datos['nombre_admin'] ?: null,
+        ':email_admin' => $datos['email_admin'] ?: null,
+        ':telefono_admin' => $datos['telefono_admin'] ?: null,
+        ':tema' => in_array($datos['tema'] ?? '', ['claro', 'oscuro'], true) ? $datos['tema'] : 'claro',
+    ];
+
+    if (array_key_exists('categorias_ingreso', $datos)) {
+        $campos[] = 'categorias_ingreso = :categorias_ingreso';
+        $params[':categorias_ingreso'] = $datos['categorias_ingreso'] !== '' ? $datos['categorias_ingreso'] : null;
+    }
+    if (array_key_exists('categorias_gasto', $datos)) {
+        $campos[] = 'categorias_gasto = :categorias_gasto';
+        $params[':categorias_gasto'] = $datos['categorias_gasto'] !== '' ? $datos['categorias_gasto'] : null;
+    }
+
+    $sql = 'UPDATE configuracion SET ' . implode(', ', $campos) . ' WHERE id = 1';
+
     try {
-        return $pdo->prepare(
-            "UPDATE configuracion
-             SET nombre_negocio = :nombre_negocio,
-                 nombre_admin = :nombre_admin,
-                 email_admin = :email_admin,
-                 telefono_admin = :telefono_admin,
-                 tema = :tema
-             WHERE id = 1"
-        )->execute([
-            ':nombre_negocio' => $datos['nombre_negocio'] ?: 'Mi Negocio',
-            ':nombre_admin' => $datos['nombre_admin'] ?: null,
-            ':email_admin' => $datos['email_admin'] ?: null,
-            ':telefono_admin' => $datos['telefono_admin'] ?: null,
-            ':tema' => in_array($datos['tema'] ?? '', ['claro', 'oscuro'], true) ? $datos['tema'] : 'claro',
-        ]);
+        return $pdo->prepare($sql)->execute($params);
     } catch (PDOException $e) {
-        asegurarTablasBaseDeDatos($pdo);
-        return $pdo->prepare(
-            "UPDATE configuracion
-             SET nombre_negocio = :nombre_negocio,
-                 nombre_admin = :nombre_admin,
-                 email_admin = :email_admin,
-                 telefono_admin = :telefono_admin,
-                 tema = :tema
-             WHERE id = 1"
-        )->execute([
-            ':nombre_negocio' => $datos['nombre_negocio'] ?: 'Mi Negocio',
-            ':nombre_admin' => $datos['nombre_admin'] ?: null,
-            ':email_admin' => $datos['email_admin'] ?: null,
-            ':telefono_admin' => $datos['telefono_admin'] ?: null,
-            ':tema' => in_array($datos['tema'] ?? '', ['claro', 'oscuro'], true) ? $datos['tema'] : 'claro',
-        ]);
+        asegurarTablasBaseDeDatos($pdo, true);
+        return $pdo->prepare($sql)->execute($params);
     }
 }
 

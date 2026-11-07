@@ -62,6 +62,8 @@ try {
             'email_admin' => trim((string) ($_POST['email_admin'] ?? '')),
             'telefono_admin' => trim((string) ($_POST['telefono_admin'] ?? '')),
             'tema' => (string) ($_POST['tema'] ?? 'claro'),
+            'categorias_ingreso' => trim((string) ($_POST['categorias_ingreso'] ?? '')),
+            'categorias_gasto' => trim((string) ($_POST['categorias_gasto'] ?? '')),
         ]);
         volverUsuario('Configuración guardada.');
     }

@@ -71,6 +71,19 @@ ob_start();
                 </label>
             </div>
 
+            <h4 class="etiqueta-mono font-mono text-[0.68rem] uppercase tracking-wide mb-3 mt-6">Categorías de movimientos</h4>
+            <p class="text-xs mb-3" style="color:var(--color-ink-soft)">
+                Adapta las categorías según la actividad de tu empresa (construcción, consultoría, comercio, etc.). Separa cada una por comas. Déjalas en blanco para usar las predeterminadas.
+            </p>
+            <div class="mb-3">
+                <label class="text-sm font-medium block mb-1">Categorías de ingresos (dinero que entra)</label>
+                <input type="text" name="categorias_ingreso" value="<?= htmlspecialchars($config['categorias_ingreso'] ?? '') ?>" class="campo-claro" placeholder="Remodelación, Construcción, Limpieza, Otros ingresos">
+            </div>
+            <div class="mb-5">
+                <label class="text-sm font-medium block mb-1">Categorías de gastos (dinero que sale)</label>
+                <input type="text" name="categorias_gasto" value="<?= htmlspecialchars($config['categorias_gasto'] ?? '') ?>" class="campo-claro" placeholder="Materiales, Nómina, Contratistas, Transporte, Servicios públicos, Marketing, Otros gastos">
+            </div>
+
             <button type="submit" class="w-full rounded-full py-3 font-semibold text-sm" style="background:var(--color-ink); color:var(--color-paper)">
                 Guardar cambios
             </button>

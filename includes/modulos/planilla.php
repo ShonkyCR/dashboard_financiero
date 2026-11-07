@@ -11,7 +11,7 @@ sincronizarPagosPlanillaComoGastos($pdo, date('Y-m'));
 $costoMensualEstimado = calcularCostoMensualPlanilla($colaboradores);
 $activos = array_filter($colaboradores, fn($c) => (bool) $c['activo']);
 
-$etiquetasTipoPago = ['hora' => 'Por hora', 'quincena' => 'Por quincena', 'mes' => 'Salario mensual fijo'];
+$etiquetasTipoPago = ['hora' => 'Por hora', 'semana' => 'Semanal', 'quincena' => 'Por quincena', 'mes' => 'Salario mensual fijo'];
 
 ob_start();
 ?>
@@ -42,7 +42,7 @@ ob_start();
 <p class="text-xs mb-5" style="color:var(--color-ink-soft)">
     * El costo de quienes ganan por hora es un estimado a jornada completa; el monto real depende de las horas que reporte cada persona.
     Los pagos del mes actual se registran solos como gastos <strong>Nómina</strong> y aparecen en Reportes y Gastos
-    (desglose mensual · quincenal · por hora).
+    (desglose mensual · quincenal · semanal · por hora).
 </p>
 
 <div class="overflow-x-auto rounded-xl" style="border:1px solid var(--color-line)">
@@ -109,6 +109,7 @@ ob_start();
                 <select name="tipo_pago" id="tipo_pago-colaborador" required class="campo-claro">
                     <option value="mes">Salario mensual fijo</option>
                     <option value="quincena">Por quincena</option>
+                    <option value="semana">Semanal</option>
                     <option value="hora">Por hora</option>
                 </select>
             </div>

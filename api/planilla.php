@@ -39,7 +39,7 @@ try {
         'tarifa' => (float) ($_POST['tarifa'] ?? 0),
     ];
 
-    if (!in_array($datos['tipo_pago'], ['hora', 'quincena', 'mes'], true)) {
+    if (!in_array($datos['tipo_pago'], ['hora', 'semana', 'quincena', 'mes'], true)) {
         $datos['tipo_pago'] = 'mes';
     }
 

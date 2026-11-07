@@ -25,8 +25,10 @@ CREATE TABLE IF NOT EXISTS usuarios (
 ALTER TABLE facturas ADD COLUMN contacto_id INT DEFAULT NULL;
 ALTER TABLE facturas ADD COLUMN transaccion_id INT DEFAULT NULL;
 
--- Columna para el logo del negocio (se sube desde Configuración):
+-- Columna para el logo del negocio y categorías personalizadas:
 ALTER TABLE configuracion ADD COLUMN logo VARCHAR(255) DEFAULT NULL;
+ALTER TABLE configuracion ADD COLUMN categorias_ingreso TEXT DEFAULT NULL;
+ALTER TABLE configuracion ADD COLUMN categorias_gasto TEXT DEFAULT NULL;
 
 -- Vincular gastos/ingresos a un cliente del directorio (reportes por cliente):
 ALTER TABLE transacciones ADD COLUMN contacto_id INT DEFAULT NULL;
@@ -34,7 +36,8 @@ ALTER TABLE transacciones ADD COLUMN contacto_id INT DEFAULT NULL;
 -- Pagos de planilla materializados como gastos ( Nómina ) en reportes:
 ALTER TABLE transacciones ADD COLUMN origen ENUM('manual', 'planilla') NOT NULL DEFAULT 'manual';
 ALTER TABLE transacciones ADD COLUMN colaborador_id INT DEFAULT NULL;
-ALTER TABLE transacciones ADD COLUMN frecuencia_planilla ENUM('mes', 'quincena', 'hora') DEFAULT NULL;
+ALTER TABLE transacciones MODIFY COLUMN frecuencia_planilla ENUM('mes', 'quincena', 'semana', 'hora') DEFAULT NULL;
+ALTER TABLE colaboradores MODIFY COLUMN tipo_pago ENUM('hora', 'semana', 'quincena', 'mes') NOT NULL DEFAULT 'mes';
 
 -- Estado del proyecto del cliente (activa / finalizada — sale del filtro de reportes):
 ALTER TABLE contactos ADD COLUMN proyecto_finalizado TINYINT(1) NOT NULL DEFAULT 0;

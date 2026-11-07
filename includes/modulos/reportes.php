@@ -181,7 +181,7 @@ ob_start();
             </thead>
             <tbody>
                 <?php
-                $etiquetasFrec = ['mes' => 'Mensual', 'quincena' => 'Quincenal', 'hora' => 'Por hora'];
+                $etiquetasFrec = ['mes' => 'Mensual', 'quincena' => 'Quincenal', 'semana' => 'Semanal', 'hora' => 'Por hora'];
                 foreach ($desglosePlanilla['filas'] as $filaPlanilla):
                     $frecClave = (string) ($filaPlanilla['frecuencia_planilla'] ?? 'mes');
                 ?>
@@ -251,7 +251,9 @@ ob_start();
                 </tbody>
             </table>
         </div>
-        <canvas id="grafico-por-cliente" height="180"></canvas>
+        <div class="max-w-xl mx-auto my-4 w-full">
+            <canvas id="grafico-por-cliente" height="160"></canvas>
+        </div>
     <?php endif; ?>
 </div>
 
