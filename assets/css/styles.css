@@ -942,8 +942,8 @@ body.tema-oscuro .btn-tema-toggle::after {
    MÓDULOS NUEVOS — Facturas, Planilla, Clientes, Reportes, Configuración
    ========================================================= */
 
-/* ---- Modo oscuro global (se activa agregando .tema-oscuro al <body>,
-   independiente de .tema-libro que ya existía solo para el Modo Detalle) ---- */
+/* ---- Modo oscuro global (se activa agregando .tema-oscuro a <html> o <body>) ---- */
+html.tema-oscuro,
 body.tema-oscuro {
     --color-paper: #1B2027;
     --color-paper-card: #232A33;

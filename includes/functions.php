@@ -223,6 +223,17 @@ function sanearFecha(?string $valor): ?string
     return ($d && $d->format('Y-m-d') === $valor) ? $valor : null;
 }
 
+/** Devuelve únicamente el nombre del mes en español (1 a 12), e.g. 11 => 'noviembre'. */
+function nombreMesSolo(int $mesNum): string
+{
+    $nombres = [
+        1 => 'enero', 2 => 'febrero', 3 => 'marzo', 4 => 'abril',
+        5 => 'mayo', 6 => 'junio', 7 => 'julio', 8 => 'agosto',
+        9 => 'septiembre', 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre'
+    ];
+    return $nombres[$mesNum] ?? '';
+}
+
 /** Nombre de mes en español a partir de "YYYY-MM" (evita depender de setlocale, poco confiable entre servidores). */
 function strftime_es(string $mes): string
 {

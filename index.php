@@ -50,7 +50,7 @@ $stmtTopGastos = $pdo->prepare(
 $stmtTopGastos->execute([':desde' => $mesDesde, ':hasta' => $mesHasta]);
 $top3CategoriasGasto = $stmtTopGastos->fetchAll();
 
-$mesActualNombre = ucfirst(strftime_es(date('Y-m')));
+$mesSolo = ucfirst(nombreMesSolo((int)date('n')));
 $anioActual = date('Y');
 $diaActual = date('j');
 $transacciones = obtenerTransacciones($pdo, [
@@ -182,7 +182,7 @@ $etiquetaSegundoModo = $esSuperadmin ? 'Detalle (auditoría)' : 'Movimientos';
             <!-- Tarjeta ticket: estado del negocio -->
             <div class="area-estado tarjeta-ticket">
                 <p class="etiqueta-mono font-mono text-xs uppercase tracking-wide" style="color:var(--color-ink-soft)">
-                    Estado financiero — <?= htmlspecialchars($mesActualNombre) ?>, <?= $anioActual ?>
+                    Estado financiero — <?= htmlspecialchars($mesSolo) ?> <?= $anioActual ?>
                 </p>
                 <div class="flex items-center gap-3 mt-2">
                     <span id="emoji-semaforo" class="text-4xl"><?= $s['emoji'] ?></span>
@@ -192,7 +192,7 @@ $etiquetaSegundoModo = $esSuperadmin ? 'Detalle (auditoría)' : 'Movimientos';
                     </div>
                 </div>
                 <p class="text-[0.72rem] mt-2.5 pt-2 border-t" style="color:var(--color-ink-soft); border-color:var(--color-line);">
-                    ℹ️ Información actualizada al <?= $diaActual ?> de <?= htmlspecialchars(mb_strtolower($mesActualNombre)) ?>, <?= $anioActual ?>
+                    ℹ️ Información actualizada al <?= $diaActual ?> de <?= htmlspecialchars(mb_strtolower($mesSolo)) ?> de <?= $anioActual ?>
                 </p>
             </div>
 

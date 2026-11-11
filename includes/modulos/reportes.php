@@ -104,7 +104,8 @@ $serieGastos = [];
 for ($i = 5; $i >= 0; $i--) {
     $claveMes = date('Y-m', strtotime('first day of this month -' . $i . ' months'));
     $filaMes = $seriePorMes[$claveMes] ?? null;
-    $etiquetasMeses[] = ucfirst(strftime_es($claveMes));
+    $mesNum = (int)date('n', strtotime($claveMes . '-01'));
+    $etiquetasMeses[] = ucfirst(nombreMesSolo($mesNum));
     $serieIngresos[] = $filaMes !== null ? (float) $filaMes['ingresos'] : 0.0;
     $serieGastos[] = $filaMes !== null ? (float) $filaMes['gastos'] : 0.0;
 }
@@ -366,19 +367,52 @@ ob_start();
 
 <script>
 (function () {
-    const colorTexto = getComputedStyle(document.body).getPropertyValue('--color-ink').trim() || '#1C2733';
-    Chart.defaults.color = colorTexto;
+    function esModoOscuro() {
+        return document.body.classList.contains('tema-oscuro') ||
+               document.documentElement.classList.contains('tema-oscuro') ||
+               localStorage.getItem('tema_dashboard') === 'oscuro';
+    }
+
+    function getColores(oscuro) {
+        return {
+            texto: oscuro ? '#F8FAFC' : '#1E293B',           // Nombres y leyendas principales
+            textoSecundario: oscuro ? '#94A3B8' : '#475569', // Ticks, números y subtítulos
+            grid: oscuro ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+            bordeDona: oscuro ? '#232A33' : '#FFFFFF',
+            ingresos: oscuro ? '#2DD4BF' : '#0D9488',        // Teal vibrante
+            ingresosHover: oscuro ? '#5EEAD4' : '#14B8A6',
+            gastos: oscuro ? '#FB7185' : '#E11D48',          // Coral/Rosa rojizo moderno (alta visibilidad en oscuro)
+            gastosHover: oscuro ? '#FDA4AF' : '#F43F5E',
+            utilidad: oscuro ? '#38BDF8' : '#0D9488',        // Celeste en modo oscuro, Teal en claro
+            utilidadBg: oscuro ? 'rgba(56, 189, 248, 0.16)' : 'rgba(13, 148, 136, 0.12)',
+            donaGastos: oscuro
+                ? ['#FB7185', '#2DD4BF', '#FBBF24', '#A78BFA', '#38BDF8', '#34D399']
+                : ['#E11D48', '#0D9488', '#F59E0B', '#8B5CF6', '#0284C7', '#10B981'],
+            donaIngresos: oscuro
+                ? ['#2DD4BF', '#38BDF8', '#FBBF24', '#34D399', '#A78BFA', '#FB7185']
+                : ['#0D9488', '#0284C7', '#F59E0B', '#10B981', '#8B5CF6', '#E11D48'],
+        };
+    }
+
+    let paleta = getColores(esModoOscuro());
     Chart.defaults.font.family = "Inter, sans-serif";
+    Chart.defaults.color = paleta.textoSecundario;
 
     const meses = <?= json_encode($etiquetasMeses, JSON_UNESCAPED_UNICODE) ?>;
     const ingresos = <?= json_encode($serieIngresos) ?>;
     const gastos = <?= json_encode($serieGastos) ?>;
     const utilidad = ingresos.map((v, i) => v - gastos[i]);
 
-    // Evolución mensual (estilo moderno: Teal + Dark Navy con bordes redondeados)
+    let chartIngresosGastos = null;
+    let chartUtilidad = null;
+    let chartGastosCat = null;
+    let chartIngresosCat = null;
+    let chartCliente = null;
+
+    // 1. Evolución mensual (Ingresos vs Gastos con bordes redondeados y alto contraste)
     const elIngresosGastos = document.getElementById('grafico-ingresos-gastos');
     if (elIngresosGastos) {
-        new Chart(elIngresosGastos, {
+        chartIngresosGastos = new Chart(elIngresosGastos, {
             type: 'bar',
             data: {
                 labels: meses,
@@ -386,16 +420,16 @@ ob_start();
                     {
                         label: 'Ingresos',
                         data: ingresos,
-                        backgroundColor: '#0d9488',
-                        hoverBackgroundColor: '#14b8a6',
+                        backgroundColor: paleta.ingresos,
+                        hoverBackgroundColor: paleta.ingresosHover,
                         borderRadius: 6,
                         barPercentage: 0.65,
                     },
                     {
                         label: 'Gastos',
                         data: gastos,
-                        backgroundColor: '#1e293b',
-                        hoverBackgroundColor: '#334155',
+                        backgroundColor: paleta.gastos,
+                        hoverBackgroundColor: paleta.gastosHover,
                         borderRadius: 6,
                         barPercentage: 0.65,
                     },
@@ -407,7 +441,13 @@ ob_start();
                 plugins: {
                     legend: {
                         position: 'bottom',
-                        labels: { usePointStyle: true, boxWidth: 8, padding: 15 }
+                        labels: {
+                            usePointStyle: true,
+                            boxWidth: 8,
+                            padding: 15,
+                            color: paleta.texto,
+                            font: { size: 12, weight: '500' }
+                        }
                     },
                     tooltip: {
                         callbacks: {
@@ -420,31 +460,34 @@ ob_start();
                 scales: {
                     x: {
                         grid: { display: false },
-                        border: { display: false }
+                        border: { display: false },
+                        ticks: { color: paleta.textoSecundario, font: { size: 11 } }
                     },
                     y: {
-                        grid: { color: 'rgba(0, 0, 0, 0.05)' },
-                        border: { display: false }
+                        grid: { color: paleta.grid },
+                        border: { display: false },
+                        ticks: { color: paleta.textoSecundario, font: { size: 11 } }
                     }
                 }
             },
         });
     }
 
+    // 2. Gráfico de Utilidad
     const elUtilidad = document.getElementById('grafico-utilidad');
     if (elUtilidad) {
-        new Chart(elUtilidad, {
+        chartUtilidad = new Chart(elUtilidad, {
             type: 'line',
             data: {
                 labels: meses,
                 datasets: [{
                     label: 'Utilidad',
                     data: utilidad,
-                    borderColor: '#0d9488',
-                    backgroundColor: 'rgba(13, 148, 136, 0.12)',
+                    borderColor: paleta.utilidad,
+                    backgroundColor: paleta.utilidadBg,
                     fill: true,
                     tension: 0.35,
-                    pointBackgroundColor: '#0d9488',
+                    pointBackgroundColor: paleta.utilidad,
                     pointRadius: 4,
                     borderWidth: 2.5
                 }],
@@ -454,63 +497,97 @@ ob_start();
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    x: { grid: { display: false }, border: { display: false } },
-                    y: { grid: { color: 'rgba(0,0,0,0.05)' }, border: { display: false } }
+                    x: {
+                        grid: { display: false },
+                        border: { display: false },
+                        ticks: { color: paleta.textoSecundario, font: { size: 11 } }
+                    },
+                    y: {
+                        grid: { color: paleta.grid },
+                        border: { display: false },
+                        ticks: { color: paleta.textoSecundario, font: { size: 11 } }
+                    }
                 }
             },
         });
     }
 
+    // 3. Gráficos de rosca (Categorías de gastos)
     const catGastos = <?= json_encode(array_column($gastosPorCategoria, 'categoria'), JSON_UNESCAPED_UNICODE) ?>;
     const totGastos = <?= json_encode(array_map('floatval', array_column($gastosPorCategoria, 'total'))) ?>;
-    new Chart(document.getElementById('grafico-gastos-categoria'), {
-        type: 'doughnut',
-        data: {
-            labels: catGastos.length ? catGastos : ['Sin datos'],
-            datasets: [{
-                data: catGastos.length ? totGastos : [1],
-                backgroundColor: catGastos.length ? ['#0d9488', '#1e293b', '#f59e0b', '#ef4444', '#6366f1', '#64748b'] : ['#E5E7EB'],
-                borderWidth: 2,
-                borderColor: '#ffffff'
-            }],
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '70%',
-            plugins: {
-                legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 12 } }
-            }
-        },
-    });
+    const elGastosCat = document.getElementById('grafico-gastos-categoria');
+    if (elGastosCat) {
+        chartGastosCat = new Chart(elGastosCat, {
+            type: 'doughnut',
+            data: {
+                labels: catGastos.length ? catGastos : ['Sin datos'],
+                datasets: [{
+                    data: catGastos.length ? totGastos : [1],
+                    backgroundColor: catGastos.length ? paleta.donaGastos : ['#E5E7EB'],
+                    borderWidth: 2,
+                    borderColor: paleta.bordeDona
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            usePointStyle: true,
+                            boxWidth: 8,
+                            padding: 12,
+                            color: paleta.texto,
+                            font: { size: 11 }
+                        }
+                    }
+                }
+            },
+        });
+    }
 
+    // 4. Gráficos de rosca (Categorías de ingresos)
     const catIngresos = <?= json_encode(array_column($ingresosPorCategoria, 'categoria'), JSON_UNESCAPED_UNICODE) ?>;
     const totIngresos = <?= json_encode(array_map('floatval', array_column($ingresosPorCategoria, 'total'))) ?>;
-    new Chart(document.getElementById('grafico-ingresos-categoria'), {
-        type: 'doughnut',
-        data: {
-            labels: catIngresos.length ? catIngresos : ['Sin datos'],
-            datasets: [{
-                data: catIngresos.length ? totIngresos : [1],
-                backgroundColor: catIngresos.length ? ['#0d9488', '#3b82f6', '#f59e0b', '#10b981', '#64748b'] : ['#E5E7EB'],
-                borderWidth: 2,
-                borderColor: '#ffffff'
-            }],
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '70%',
-            plugins: {
-                legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 12 } }
-            }
-        },
-    });
+    const elIngresosCat = document.getElementById('grafico-ingresos-categoria');
+    if (elIngresosCat) {
+        chartIngresosCat = new Chart(elIngresosCat, {
+            type: 'doughnut',
+            data: {
+                labels: catIngresos.length ? catIngresos : ['Sin datos'],
+                datasets: [{
+                    data: catIngresos.length ? totIngresos : [1],
+                    backgroundColor: catIngresos.length ? paleta.donaIngresos : ['#E5E7EB'],
+                    borderWidth: 2,
+                    borderColor: paleta.bordeDona
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            usePointStyle: true,
+                            boxWidth: 8,
+                            padding: 12,
+                            color: paleta.texto,
+                            font: { size: 11 }
+                        }
+                    }
+                }
+            },
+        });
+    }
 
-    // Ingresos vs gastos por cliente (Barras horizontales modernas estilo Landing / Mobile)
+    // 5. Ingresos vs gastos por cliente (Barras horizontales de alto contraste)
     const elCliente = document.getElementById('grafico-por-cliente');
     if (elCliente) {
-        new Chart(elCliente, {
+        chartCliente = new Chart(elCliente, {
             type: 'bar',
             data: {
                 labels: <?= json_encode($nombresClientes, JSON_UNESCAPED_UNICODE) ?>,
@@ -518,16 +595,16 @@ ob_start();
                     {
                         label: 'Ingresos',
                         data: <?= json_encode($ingresosClientes) ?>,
-                        backgroundColor: '#0d9488',
-                        hoverBackgroundColor: '#14b8a6',
+                        backgroundColor: paleta.ingresos,
+                        hoverBackgroundColor: paleta.ingresosHover,
                         borderRadius: 6,
                         barThickness: 14,
                     },
                     {
                         label: 'Gastos',
                         data: <?= json_encode($gastosClientes) ?>,
-                        backgroundColor: '#1e293b',
-                        hoverBackgroundColor: '#334155',
+                        backgroundColor: paleta.gastos,
+                        hoverBackgroundColor: paleta.gastosHover,
                         borderRadius: 6,
                         barThickness: 14,
                     },
@@ -540,7 +617,13 @@ ob_start();
                 plugins: {
                     legend: {
                         position: 'bottom',
-                        labels: { usePointStyle: true, boxWidth: 8, padding: 16 }
+                        labels: {
+                            usePointStyle: true,
+                            boxWidth: 8,
+                            padding: 16,
+                            color: paleta.texto,
+                            font: { size: 12, weight: '500' }
+                        }
                     },
                     tooltip: {
                         callbacks: {
@@ -552,18 +635,86 @@ ob_start();
                 },
                 scales: {
                     x: {
-                        grid: { color: 'rgba(0, 0, 0, 0.05)' },
-                        border: { display: false }
+                        grid: { color: paleta.grid },
+                        border: { display: false },
+                        ticks: { color: paleta.textoSecundario, font: { size: 11 } }
                     },
                     y: {
                         grid: { display: false },
                         border: { display: false },
-                        ticks: { autoSkip: false }
+                        ticks: {
+                            autoSkip: false,
+                            color: paleta.texto,
+                            font: { size: 12, weight: '500' }
+                        }
                     }
                 }
             },
         });
     }
+
+    // Sincronización en tiempo real al alternar entre Modo Claro y Modo Oscuro
+    function sincronizarGraficosConTema() {
+        const c = getColores(esModoOscuro());
+        Chart.defaults.color = c.textoSecundario;
+
+        if (chartIngresosGastos) {
+            chartIngresosGastos.data.datasets[0].backgroundColor = c.ingresos;
+            chartIngresosGastos.data.datasets[0].hoverBackgroundColor = c.ingresosHover;
+            chartIngresosGastos.data.datasets[1].backgroundColor = c.gastos;
+            chartIngresosGastos.data.datasets[1].hoverBackgroundColor = c.gastosHover;
+            chartIngresosGastos.options.plugins.legend.labels.color = c.texto;
+            chartIngresosGastos.options.scales.x.ticks.color = c.textoSecundario;
+            chartIngresosGastos.options.scales.y.ticks.color = c.textoSecundario;
+            chartIngresosGastos.options.scales.y.grid.color = c.grid;
+            chartIngresosGastos.update();
+        }
+
+        if (chartUtilidad) {
+            chartUtilidad.data.datasets[0].borderColor = c.utilidad;
+            chartUtilidad.data.datasets[0].backgroundColor = c.utilidadBg;
+            chartUtilidad.data.datasets[0].pointBackgroundColor = c.utilidad;
+            chartUtilidad.options.scales.x.ticks.color = c.textoSecundario;
+            chartUtilidad.options.scales.y.ticks.color = c.textoSecundario;
+            chartUtilidad.options.scales.y.grid.color = c.grid;
+            chartUtilidad.update();
+        }
+
+        if (chartGastosCat) {
+            if (catGastos.length) {
+                chartGastosCat.data.datasets[0].backgroundColor = c.donaGastos;
+            }
+            chartGastosCat.data.datasets[0].borderColor = c.bordeDona;
+            chartGastosCat.options.plugins.legend.labels.color = c.texto;
+            chartGastosCat.update();
+        }
+
+        if (chartIngresosCat) {
+            if (catIngresos.length) {
+                chartIngresosCat.data.datasets[0].backgroundColor = c.donaIngresos;
+            }
+            chartIngresosCat.data.datasets[0].borderColor = c.bordeDona;
+            chartIngresosCat.options.plugins.legend.labels.color = c.texto;
+            chartIngresosCat.update();
+        }
+
+        if (chartCliente) {
+            chartCliente.data.datasets[0].backgroundColor = c.ingresos;
+            chartCliente.data.datasets[0].hoverBackgroundColor = c.ingresosHover;
+            chartCliente.data.datasets[1].backgroundColor = c.gastos;
+            chartCliente.data.datasets[1].hoverBackgroundColor = c.gastosHover;
+            chartCliente.options.plugins.legend.labels.color = c.texto;
+            chartCliente.options.scales.x.ticks.color = c.textoSecundario;
+            chartCliente.options.scales.x.grid.color = c.grid;
+            chartCliente.options.scales.y.ticks.color = c.texto;
+            chartCliente.update();
+        }
+    }
+
+    window.addEventListener('temaCambiado', sincronizarGraficosConTema);
+    window.addEventListener('storage', (e) => {
+        if (e.key === 'tema_dashboard') sincronizarGraficosConTema();
+    });
 })();
 </script>
 <?php

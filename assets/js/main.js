@@ -420,9 +420,11 @@ function temaActual() {
 function aplicarTema(tema) {
     const oscuro = tema === 'oscuro';
     document.body.classList.toggle('tema-oscuro', oscuro);
+    document.documentElement.classList.toggle('tema-oscuro', oscuro);
     document.body.setAttribute('data-tema', tema);
     try { localStorage.setItem('tema_dashboard', tema); } catch (e) {}
     sincronizarChipsTema(tema);
+    window.dispatchEvent(new CustomEvent('temaCambiado', { detail: { tema, oscuro } }));
 }
 
 function sincronizarChipsTema(tema) {
