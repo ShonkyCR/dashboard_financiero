@@ -35,12 +35,12 @@ try {
     $datos = [
         'nombre' => trim((string) ($_POST['nombre'] ?? '')),
         'puesto' => trim((string) ($_POST['puesto'] ?? '')),
-        'tipo_pago' => (string) ($_POST['tipo_pago'] ?? 'mes'),
+        'tipo_pago' => (string) ($_POST['tipo_pago'] ?? 'semana'),
         'tarifa' => (float) ($_POST['tarifa'] ?? 0),
     ];
 
-    if (!in_array($datos['tipo_pago'], ['hora', 'semana', 'quincena', 'mes'], true)) {
-        $datos['tipo_pago'] = 'mes';
+    if (!in_array($datos['tipo_pago'], ['semana', 'quincena'], true)) {
+        $datos['tipo_pago'] = 'semana';
     }
 
     if ($accion === 'crear') {

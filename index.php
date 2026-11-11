@@ -34,6 +34,25 @@ $mesDesde = $filtroDesde ?: date('Y-m-01');
 $mesHasta = $filtroHasta ?: date('Y-m-t');
 
 $resumen = obtenerResumen($pdo, $mesDesde, $mesHasta);
+
+$gastosSobreIngresosPct = ($resumen['ingresos'] > 0)
+    ? round(($resumen['gastos'] / $resumen['ingresos']) * 100)
+    : ($resumen['gastos'] > 0 ? 100 : 0);
+
+$stmtTopGastos = $pdo->prepare(
+    "SELECT categoria, SUM(monto) AS total
+     FROM transacciones
+     WHERE tipo = 'gasto' AND fecha >= :desde AND fecha <= :hasta
+     GROUP BY categoria
+     ORDER BY total DESC
+     LIMIT 3"
+);
+$stmtTopGastos->execute([':desde' => $mesDesde, ':hasta' => $mesHasta]);
+$top3CategoriasGasto = $stmtTopGastos->fetchAll();
+
+$mesActualNombre = ucfirst(strftime_es(date('Y-m')));
+$anioActual = date('Y');
+$diaActual = date('j');
 $transacciones = obtenerTransacciones($pdo, [
     'categoria' => $filtroCategoria,
     'tipo'      => $filtroTipo,
@@ -162,7 +181,9 @@ $etiquetaSegundoModo = $esSuperadmin ? 'Detalle (auditoría)' : 'Movimientos';
 
             <!-- Tarjeta ticket: estado del negocio -->
             <div class="area-estado tarjeta-ticket">
-                <p class="etiqueta-mono font-mono text-xs uppercase tracking-wide" style="color:var(--color-ink-soft)">Estado de tu negocio hoy</p>
+                <p class="etiqueta-mono font-mono text-xs uppercase tracking-wide" style="color:var(--color-ink-soft)">
+                    Estado financiero — <?= htmlspecialchars($mesActualNombre) ?>, <?= $anioActual ?>
+                </p>
                 <div class="flex items-center gap-3 mt-2">
                     <span id="emoji-semaforo" class="text-4xl"><?= $s['emoji'] ?></span>
                     <div>
@@ -170,6 +191,9 @@ $etiquetaSegundoModo = $esSuperadmin ? 'Detalle (auditoría)' : 'Movimientos';
                         <p id="mensaje-semaforo" class="text-sm mt-1" style="color:var(--color-ink-soft)"><?= htmlspecialchars($s['mensaje']) ?></p>
                     </div>
                 </div>
+                <p class="text-[0.72rem] mt-2.5 pt-2 border-t" style="color:var(--color-ink-soft); border-color:var(--color-line);">
+                    ℹ️ Información actualizada al <?= $diaActual ?> de <?= htmlspecialchars(mb_strtolower($mesActualNombre)) ?>, <?= $anioActual ?>
+                </p>
             </div>
 
             <!-- Tarjeta de acción -->
@@ -187,25 +211,77 @@ $etiquetaSegundoModo = $esSuperadmin ? 'Detalle (auditoría)' : 'Movimientos';
 
             <!-- Ingresos -->
             <div class="area-ingresos tarjeta tarjeta-cifra ingresos">
-                <p class="etiqueta">Lo que ha entrado</p>
+                <p class="etiqueta">Lo que ha entrado en el mes</p>
                 <p id="valor-ingresos" class="valor"><?= htmlspecialchars(formatearMonto($resumen['ingresos'])) ?></p>
             </div>
 
             <!-- Gastos -->
             <div class="area-gastos tarjeta tarjeta-cifra gastos">
-                <p class="etiqueta">Lo que ha salido</p>
+                <p class="etiqueta">Lo que ha salido en el mes</p>
                 <p id="valor-gastos" class="valor"><?= htmlspecialchars(formatearMonto($resumen['gastos'])) ?></p>
             </div>
 
-            <!-- Utilidad -->
+            <!-- Utilidad / Saldo actual -->
             <div class="area-utilidad tarjeta tarjeta-cifra utilidad">
-                <p class="etiqueta">Lo que te queda</p>
+                <p class="etiqueta">Saldo actual en el mes</p>
                 <p id="valor-utilidad" class="valor"><?= htmlspecialchars(formatearMonto($resumen['utilidad'])) ?></p>
             </div>
 
-            <!-- Placeholder de imagen/ilustración -->
-            <div class="area-imagen placeholder-imagen">
-                [ Espacio reservado para imagen o ilustración del negocio ]
+            <!-- Diagnóstico inteligente de gastos debajo de las cifras -->
+            <div class="col-span-full p-4 rounded-2xl flex items-start gap-3"
+                 style="background: <?= $resumen['gastos'] > $resumen['ingresos'] ? 'rgba(178, 58, 46, 0.08)' : 'rgba(47, 125, 90, 0.08)' ?>; 
+                        border: 1px solid <?= $resumen['gastos'] > $resumen['ingresos'] ? 'rgba(178, 58, 46, 0.25)' : 'rgba(47, 125, 90, 0.25)' ?>; 
+                        color: var(--color-ink);">
+                <span style="font-size:1.35rem; line-height:1"><?= $resumen['gastos'] > $resumen['ingresos'] ? '⚠️' : '💡' ?></span>
+                <div class="flex-1">
+                    <p class="font-semibold text-sm">
+                        <?php if ($resumen['ingresos'] > 0): ?>
+                            Tus gastos representan el <strong><?= $gastosSobreIngresosPct ?>%</strong> de tus ingresos del mes.
+                        <?php elseif ($resumen['gastos'] > 0): ?>
+                            Registras gastos por <strong><?= htmlspecialchars(formatearMonto($resumen['gastos'])) ?></strong> sin ingresos aún este mes.
+                        <?php else: ?>
+                            Sin gastos ni ingresos registrados este mes.
+                        <?php endif; ?>
+                        <?php if (!empty($top3CategoriasGasto) && $resumen['gastos'] > 0): ?>
+                            Revisa las tres categorías con mayor gasto:
+                        <?php endif; ?>
+                    </p>
+                    <?php if (!empty($top3CategoriasGasto) && $resumen['gastos'] > 0): ?>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <?php foreach ($top3CategoriasGasto as $idx => $cg): ?>
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-lg font-mono text-xs" style="background:var(--color-paper-card); border:1px solid var(--color-line);">
+                                    <strong>#<?= $idx + 1 ?> <?= htmlspecialchars($cg['categoria']) ?>:</strong>&nbsp;<?= htmlspecialchars(formatearMonto((float)$cg['total'])) ?>
+                                </span>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Imagen / Ilustración del negocio (Personalizable desde Configuración) -->
+            <?php
+            $imagenDash = null;
+            if (!empty($config['imagen_dashboard']) && file_exists(__DIR__ . '/' . $config['imagen_dashboard'])) {
+                $imagenDash = $config['imagen_dashboard'];
+            } elseif (file_exists(__DIR__ . '/assets/img/dashboard_doble_j.png')) {
+                $imagenDash = 'assets/img/dashboard_doble_j.png';
+            } elseif (file_exists(__DIR__ . '/assets/img/dashboard_doble_j.jpg')) {
+                $imagenDash = 'assets/img/dashboard_doble_j.jpg';
+            }
+            ?>
+            <div class="area-imagen" style="overflow:hidden; border-radius: 1.25rem; border: 1px solid var(--color-line); background: var(--color-paper-card); min-height: 200px; max-height: 340px; display:flex; align-items:center; justify-content:center;">
+                <?php if ($imagenDash): ?>
+                    <img src="<?= htmlspecialchars($imagenDash) ?>" alt="Dashboard - <?= htmlspecialchars($config['nombre_negocio'] ?? 'Panel Financiero') ?>" style="width:100%; height:100%; max-height:340px; object-fit:cover; display:block;">
+                <?php else: ?>
+                    <div class="p-6 text-center w-full" style="background: linear-gradient(135deg, rgba(201, 162, 39, 0.08) 0%, rgba(31, 110, 130, 0.08) 100%);">
+                        <span style="font-size:2.2rem; display:block; margin-bottom:0.4rem">📊</span>
+                        <p class="font-display font-semibold text-base">Dashboard Administrativo</p>
+                        <p class="text-xs mt-0.5" style="color:var(--color-ink-soft)"><?= htmlspecialchars($config['nombre_negocio'] ?? 'Mi Negocio') ?> · Gestión Financiera</p>
+                        <a href="modulo.php?p=configuracion" class="inline-flex items-center gap-1.5 mt-3 text-xs font-medium px-3.5 py-1.5 rounded-full" style="background:var(--color-paper); border:1px solid var(--color-line); color:var(--color-ink); text-decoration:none;">
+                            ⚙️ Personalizar imagen en Configuración
+                        </a>
+                    </div>
+                <?php endif; ?>
             </div>
 
         </div>

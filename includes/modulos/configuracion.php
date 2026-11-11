@@ -128,6 +128,66 @@ ob_start();
     </div>
 
     <!-- =====================================================
+         APARTADO 1c — Imagen / Portada del Dashboard
+         ===================================================== -->
+    <div class="tarjeta max-w-3xl w-full min-w-0">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+            <h3 class="font-display text-lg font-semibold">Imagen del Dashboard</h3>
+            <?php if (!empty($config['imagen_dashboard']) && file_exists(__DIR__ . '/../../' . $config['imagen_dashboard'])): ?>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium" style="background:rgba(46, 125, 50, 0.12); color:#2e7d32; border:1px solid rgba(46, 125, 50, 0.25);">
+                    ✓ Personalizada
+                </span>
+            <?php else: ?>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono" style="background:var(--color-paper-card); border:1px solid var(--color-line); color:var(--color-ink-soft);">
+                    Predeterminada
+                </span>
+            <?php endif; ?>
+        </div>
+        <p class="text-sm mb-4" style="color:var(--color-ink-soft)">
+            Personaliza la imagen principal que aparece en el Dashboard de inicio. Cada empresa puede colocar una foto de sus obras, equipo de trabajo, instalaciones o diseño publicitario.
+        </p>
+
+        <!-- Previsualización de la imagen -->
+        <div class="mb-5 overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-paper-card)]" style="min-height:160px; max-height:240px; display:flex; align-items:center; justify-content:center;">
+            <?php if (!empty($config['imagen_dashboard']) && file_exists(__DIR__ . '/../../' . $config['imagen_dashboard'])): ?>
+                <img src="<?= htmlspecialchars($config['imagen_dashboard']) ?>" alt="Imagen del Dashboard" style="width:100%; max-height:240px; object-fit:cover; display:block;">
+            <?php elseif (file_exists(__DIR__ . '/../../assets/img/dashboard_doble_j.png')): ?>
+                <img src="assets/img/dashboard_doble_j.png" alt="Imagen por defecto" style="width:100%; max-height:240px; object-fit:cover; display:block;">
+            <?php elseif (file_exists(__DIR__ . '/../../assets/img/dashboard_doble_j.jpg')): ?>
+                <img src="assets/img/dashboard_doble_j.jpg" alt="Imagen por defecto" style="width:100%; max-height:240px; object-fit:cover; display:block;">
+            <?php else: ?>
+                <div class="p-6 text-center w-full" style="background: linear-gradient(135deg, rgba(201, 162, 39, 0.08) 0%, rgba(31, 110, 130, 0.08) 100%);">
+                    <span style="font-size:2rem; display:block; margin-bottom:0.3rem">🖼️</span>
+                    <p class="font-display font-medium text-sm">Sin imagen asignada</p>
+                    <p class="text-xs mt-1" style="color:var(--color-ink-soft)">Sube una imagen para que se muestre en el banner de bienvenida del dashboard.</p>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <form method="post" action="api/configuracion.php" enctype="multipart/form-data">
+            <input type="hidden" name="accion" value="guardar_imagen_dashboard">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <input type="file" name="imagen_dashboard" accept=".png,.jpg,.jpeg,.webp,.gif" class="campo-claro campo-archivo" required>
+                <button type="submit" class="rounded-full px-5 py-2 text-sm font-semibold whitespace-nowrap" style="background:var(--color-ink); color:var(--color-paper)">
+                    Subir imagen
+                </button>
+            </div>
+            <p class="text-xs mt-2" style="color:var(--color-ink-soft)">
+                PNG, JPG, JPEG, WEBP o GIF · Máximo 5 MB · Se recomienda formato horizontal (panorámico).
+            </p>
+        </form>
+
+        <?php if (!empty($config['imagen_dashboard'])): ?>
+        <form method="post" action="api/configuracion.php" onsubmit="return confirm('¿Quitar la imagen personalizada del dashboard y volver a la ilustración por defecto?');" class="mt-3">
+            <input type="hidden" name="accion" value="eliminar_imagen_dashboard">
+            <button type="submit" class="btn-secundario text-xs text-red-600 hover:text-red-700">
+                🗑️ Restablecer a imagen predeterminada
+            </button>
+        </form>
+        <?php endif; ?>
+    </div>
+
+    <!-- =====================================================
          APARTADO 2 — Mi cuenta (datos personales y contraseña)
          ===================================================== -->
     <div class="tarjeta max-w-3xl w-full min-w-0">

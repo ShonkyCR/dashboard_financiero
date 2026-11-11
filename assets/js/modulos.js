@@ -152,10 +152,8 @@ function cerrarModalFactura() {
 
 /* ---------------- Planilla ---------------- */
 const etiquetasTarifaPorTipo = {
-    hora: '¿Cuánto se paga por hora?',
-    semana: 'Monto por semana',
+    semana: 'Monto semanal',
     quincena: 'Monto por quincena',
-    mes: 'Monto mensual',
 };
 
 function abrirModalColaborador(colaborador) {
@@ -174,13 +172,14 @@ function abrirModalColaborador(colaborador) {
         idInput.value = colaborador.id;
         nombre.value = colaborador.nombre;
         puesto.value = colaborador.puesto || '';
-        tipoPago.value = colaborador.tipo_pago;
+        tipoPago.value = colaborador.tipo_pago || 'semana';
         tarifa.value = colaborador.tarifa;
     } else {
         titulo.textContent = 'Agregar colaborador';
         accion.value = 'crear';
         idInput.value = '';
         document.getElementById('form-colaborador').reset();
+        if (tipoPago) tipoPago.value = 'semana';
     }
 
     actualizarEtiquetaTarifa();

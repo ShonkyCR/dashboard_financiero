@@ -109,6 +109,7 @@ CREATE TABLE configuracion (
     telefono_admin     VARCHAR(40)  DEFAULT NULL,
     tema               ENUM('claro', 'oscuro') NOT NULL DEFAULT 'claro',
     logo               VARCHAR(255) DEFAULT NULL,
+    imagen_dashboard   VARCHAR(255) DEFAULT NULL,
     categorias_ingreso TEXT DEFAULT NULL,
     categorias_gasto   TEXT DEFAULT NULL
 ) ENGINE=InnoDB;

@@ -8,6 +8,8 @@
  *  - guardar             → datos del negocio + tema
  *  - guardar_logo        → sube/actualiza el logo (multipart)
  *  - eliminar_logo       → quita el logo guardado
+ *  - guardar_imagen_dashboard  → sube/actualiza la imagen/portada del dashboard (multipart)
+ *  - eliminar_imagen_dashboard → quita la imagen del dashboard
  *  - guardar_perfil      → nombre/correo de la cuenta en sesión
  *  - cambiar_clave       → cambia la contraseña de la cuenta en sesión
  *  - crear_usuario       → superadmin: da de alta una cuenta
@@ -99,6 +101,39 @@ try {
         $config = obtenerConfiguracion($pdo);
         eliminarLogoNegocio($pdo, (string) ($config['logo'] ?? ''));
         volverUsuario('Se quitó el logo.');
+    }
+
+    /* ---------------- Imagen / Portada del Dashboard ---------------- */
+    if ($accion === 'guardar_imagen_dashboard') {
+        $config = obtenerConfiguracion($pdo);
+        $ruta = guardarImagenDashboard($_FILES['imagen_dashboard'] ?? []);
+
+        if ($ruta === '') {
+            volverUsuario('', 'Selecciona una imagen (PNG, JPG, JPEG, WEBP o GIF, máx. 5 MB).');
+        }
+        if (!str_starts_with($ruta, 'uploads/')) {
+            volverUsuario('', $ruta); // mensaje de error de guardarImagenDashboard
+        }
+
+        $pdo->prepare('UPDATE configuracion SET imagen_dashboard = :imagen WHERE id = 1')
+            ->execute([':imagen' => $ruta]);
+
+        // Si había una imagen anterior con otra ruta, borramos el archivo viejo.
+        $imagenAnterior = (string) ($config['imagen_dashboard'] ?? '');
+        if ($imagenAnterior !== '' && $imagenAnterior !== $ruta) {
+            $absoluta = rutaCarpetaUploads() . '/' . basename($imagenAnterior);
+            if (is_file($absoluta)) {
+                @unlink($absoluta);
+            }
+        }
+        volverUsuario('Imagen del dashboard actualizada.');
+    }
+
+    /* ---------------- Quitar imagen del Dashboard ---------------- */
+    if ($accion === 'eliminar_imagen_dashboard') {
+        $config = obtenerConfiguracion($pdo);
+        eliminarImagenDashboard($pdo, (string) ($config['imagen_dashboard'] ?? ''));
+        volverUsuario('Se quitó la imagen personalizada del dashboard.');
     }
 
     /* ---------------- Tema rápido (llamado por fetch desde main.js) ---------------- */

@@ -139,16 +139,16 @@ function calcularSemaforo(float $margen, float $ingresos): array
             'color'   => 'verde',
             'emoji'   => '🟢',
             'titulo'  => 'Vas muy bien',
-            'mensaje' => 'Por cada ' . MONEDA . '100 que entran, te está quedando una buena parte. Sigue así.',
+            'mensaje' => 'Por cada ' . MONEDA . '100 que entran, te está quedando una buena parte (' . number_format($margen, 1) . '% de margen). Sigue así.',
         ];
     }
 
-    if ($margen >= 5) {
+    if ($margen >= 0) {
         return [
             'color'   => 'amarillo',
             'emoji'   => '🟡',
             'titulo'  => 'Vas bien, con cuidado',
-            'mensaje' => 'Te queda algo de ganancia, pero es ajustado. Revisa si hay gastos que puedas bajar.',
+            'mensaje' => 'Te queda ganancia (' . number_format($margen, 1) . '%), pero el margen es ajustado. Revisa si hay gastos que puedas optimizar.',
         ];
     }
 
@@ -156,7 +156,7 @@ function calcularSemaforo(float $margen, float $ingresos): array
         'color'   => 'rojo',
         'emoji'   => '🔴',
         'titulo'  => 'Estás gastando más de lo que entra',
-        'mensaje' => 'Tus gastos se están comiendo (o superando) tus ventas. Es buen momento para revisar en qué se va el dinero.',
+        'mensaje' => 'Tus gastos superan tus ingresos en este período. Es buen momento para revisar en qué se va el dinero.',
     ];
 }
 
@@ -676,9 +676,55 @@ function calcularCostoMensualPlanilla(array $colaboradores): float
 }
 
 /**
+ * Costo semanal total de la planilla para colaboradores activos.
+ * Para pagos quincenales se toma la mitad (tarifa / 2).
+ */
+function calcularCostoSemanalPlanilla(array $colaboradores): float
+{
+    $total = 0.0;
+    foreach ($colaboradores as $c) {
+        if (!$c['activo']) {
+            continue;
+        }
+        $tarifa = (float) $c['tarifa'];
+        $total += match ($c['tipo_pago']) {
+            'semana' => $tarifa,
+            'quincena' => round($tarifa / 2, 2),
+            default => round($tarifa / 4, 2), // 'mes'
+        };
+    }
+    return $total;
+}
+
+/**
+ * Gasto real acumulado de planilla en el mes hasta la fecha actual (hoy).
+ * Suma los pagos con fecha <= hoy dentro del mes.
+ */
+function obtenerGastoPlanillaAcumuladoMes(PDO $pdo, ?string $mes = null): float
+{
+    if ($mes === null || !preg_match('/^\d{4}-\d{2}$/', $mes)) {
+        $mes = date('Y-m');
+    }
+    $desde = $mes . '-01';
+    $esMesActual = ($mes === date('Y-m'));
+    $hasta = $esMesActual ? date('Y-m-d') : date('Y-m-t', strtotime($desde));
+
+    $stmt = $pdo->prepare(
+        "SELECT COALESCE(SUM(monto), 0) AS total
+         FROM transacciones
+         WHERE origen = 'planilla' AND tipo = 'gasto'
+           AND fecha >= :desde AND fecha <= :hasta"
+    );
+    $stmt->execute([':desde' => $desde, ':hasta' => $hasta]);
+    return (float) $stmt->fetch()['total'];
+}
+
+/**
  * Pagos esperados de un colaborador en un mes (YYYY-MM).
  * Devuelve filas listas para transacciones tipo=gasto:
  * [{fecha, monto, descripcion, frecuencia}]
+ * Las semanas inician los días 01, 08, 15 y 22 para reflejarse
+ * a medida que transcurre cada semana del mes.
  */
 function pagosPlanillaEnMes(array $colaborador, string $mes): array
 {
@@ -693,25 +739,25 @@ function pagosPlanillaEnMes(array $colaborador, string $mes): array
     return match ($frecuencia) {
         'semana' => [
             [
-                'fecha' => $mes . '-07',
+                'fecha' => $mes . '-01',
                 'monto' => $tarifa,
                 'descripcion' => 'Pago semanal 1 — ' . $nombre,
                 'frecuencia' => 'semana',
             ],
             [
-                'fecha' => $mes . '-14',
+                'fecha' => $mes . '-08',
                 'monto' => $tarifa,
                 'descripcion' => 'Pago semanal 2 — ' . $nombre,
                 'frecuencia' => 'semana',
             ],
             [
-                'fecha' => $mes . '-21',
+                'fecha' => $mes . '-15',
                 'monto' => $tarifa,
                 'descripcion' => 'Pago semanal 3 — ' . $nombre,
                 'frecuencia' => 'semana',
             ],
             [
-                'fecha' => $mes . '-28',
+                'fecha' => $mes . '-22',
                 'monto' => $tarifa,
                 'descripcion' => 'Pago semanal 4 — ' . $nombre,
                 'frecuencia' => 'semana',
@@ -858,19 +904,11 @@ function sincronizarPagosPlanillaComoGastos(PDO $pdo, ?string $mes = null): void
         ]);
     }
 
-    // Colaborador eliminado: en el mes actual, retira sus pagos de planilla.
-    // En meses pasados se conserva el histórico.
-    if ($mes === $mesActual) {
-        $del = $pdo->prepare(
-            "DELETE FROM transacciones
-             WHERE origen = 'planilla' AND colaborador_id = :cid
-               AND fecha >= :desde AND fecha <= :hasta"
-        );
+    // En el mes actual, retira pagos de planilla obsoletos o de colaboradores eliminados
+    if ($mes === $mesActual && !empty($existePorClave)) {
+        $del = $pdo->prepare("DELETE FROM transacciones WHERE id = :id AND origen = 'planilla'");
         foreach ($existePorClave as $claveRestante => $e) {
-            $colabId = (int) ($e['colaborador_id'] ?? 0);
-            if ($colabId > 0 && !isset($porId[$colabId])) {
-                $del->execute([':cid' => $colabId, ':desde' => $desde, ':hasta' => $hasta]);
-            }
+            $del->execute([':id' => (int) $e['id']]);
         }
     }
 }
@@ -1276,6 +1314,7 @@ function asegurarTablasBaseDeDatos(PDO $pdo, bool $forzar = false): void
             telefono_admin     VARCHAR(40)  DEFAULT NULL,
             tema               ENUM('claro', 'oscuro') NOT NULL DEFAULT 'claro',
             logo               VARCHAR(255) DEFAULT NULL,
+            imagen_dashboard   VARCHAR(255) DEFAULT NULL,
             categorias_ingreso TEXT DEFAULT NULL,
             categorias_gasto   TEXT DEFAULT NULL
         ) ENGINE=InnoDB",
@@ -1294,6 +1333,7 @@ function asegurarTablasBaseDeDatos(PDO $pdo, bool $forzar = false): void
     // Migración suave: agrega columnas nuevas y actualiza enums si es necesario
     foreach ([
         'ALTER TABLE configuracion ADD COLUMN logo VARCHAR(255) DEFAULT NULL',
+        'ALTER TABLE configuracion ADD COLUMN imagen_dashboard VARCHAR(255) DEFAULT NULL',
         'ALTER TABLE configuracion ADD COLUMN categorias_ingreso TEXT DEFAULT NULL',
         'ALTER TABLE configuracion ADD COLUMN categorias_gasto TEXT DEFAULT NULL',
         'ALTER TABLE transacciones ADD COLUMN contacto_id INT DEFAULT NULL',
@@ -1328,6 +1368,7 @@ function obtenerConfiguracion(PDO $pdo): array
         'telefono_admin' => null,
         'tema' => 'claro',
         'logo' => null,
+        'imagen_dashboard' => null,
     ];
 
     try {
@@ -1378,6 +1419,10 @@ function guardarConfiguracion(PDO $pdo, array $datos): bool
     if (array_key_exists('categorias_gasto', $datos)) {
         $campos[] = 'categorias_gasto = :categorias_gasto';
         $params[':categorias_gasto'] = $datos['categorias_gasto'] !== '' ? $datos['categorias_gasto'] : null;
+    }
+    if (array_key_exists('imagen_dashboard', $datos)) {
+        $campos[] = 'imagen_dashboard = :imagen_dashboard';
+        $params[':imagen_dashboard'] = $datos['imagen_dashboard'] !== '' ? $datos['imagen_dashboard'] : null;
     }
 
     $sql = 'UPDATE configuracion SET ' . implode(', ', $campos) . ' WHERE id = 1';
@@ -1609,6 +1654,52 @@ function eliminarLogoNegocio(PDO $pdo, string $ruta): void
         }
     }
     $pdo->prepare('UPDATE configuracion SET logo = NULL WHERE id = 1')->execute();
+}
+
+/** Guarda la imagen del dashboard recibida en $archivo ($_FILES['imagen_dashboard']). Devuelve la ruta relativa o string de error. */
+function guardarImagenDashboard(array $archivo): string
+{
+    if (!isset($archivo['error']) || $archivo['error'] === UPLOAD_ERR_NO_FILE) {
+        return '';
+    }
+    if ($archivo['error'] !== UPLOAD_ERR_OK) {
+        return 'No se pudo subir la imagen. Intenta de nuevo.';
+    }
+    if ((int) $archivo['size'] > 5 * 1024 * 1024) {
+        return 'La imagen es demasiado grande (máximo 5 MB).';
+    }
+
+    $ext = strtolower(pathinfo((string) $archivo['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, ['png', 'jpg', 'jpeg', 'webp', 'gif'], true)) {
+        return 'Formato no permitido. Usa PNG, JPG, JPEG, WEBP o GIF.';
+    }
+
+    $carpeta = rutaCarpetaUploads();
+    if (!is_dir($carpeta) && !mkdir($carpeta, 0775, true)) {
+        return 'No se pudo crear la carpeta de subidas.';
+    }
+
+    // Nombre único con timestamp para evitar caché agresiva en navegadores al actualizar
+    $nombreFinal = 'dashboard-' . time() . '-' . bin2hex(random_bytes(3)) . '.' . $ext;
+    $destino = $carpeta . '/' . $nombreFinal;
+
+    if (!@move_uploaded_file((string) $archivo['tmp_name'], $destino)) {
+        return 'No se pudo guardar la imagen en el servidor.';
+    }
+
+    return 'uploads/' . $nombreFinal;
+}
+
+/** Elimina la imagen del dashboard guardada y limpia la configuración. */
+function eliminarImagenDashboard(PDO $pdo, string $ruta): void
+{
+    if ($ruta !== '' && str_starts_with($ruta, 'uploads/') && !str_contains($ruta, '..')) {
+        $absoluta = rutaCarpetaUploads() . '/' . basename($ruta);
+        if (is_file($absoluta)) {
+            @unlink($absoluta);
+        }
+    }
+    $pdo->prepare('UPDATE configuracion SET imagen_dashboard = NULL WHERE id = 1')->execute();
 }
 
 /* =========================================================

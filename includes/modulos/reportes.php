@@ -60,6 +60,39 @@ $desglosePlanilla = $clienteFiltradoId === null
     ? desglosePlanillaEnMes($pdo, $mesConsultado)
     : null;
 
+$planillaActualReporte = $desglosePlanilla !== null 
+    ? obtenerGastoPlanillaAcumuladoMes($pdo, $mesConsultado) 
+    : 0.0;
+
+$semanasPlanilla = [
+    1 => ['nombre' => 'Semana #1', 'total' => 0.0, 'pagos' => []],
+    2 => ['nombre' => 'Semana #2', 'total' => 0.0, 'pagos' => []],
+    3 => ['nombre' => 'Semana #3', 'total' => 0.0, 'pagos' => []],
+    4 => ['nombre' => 'Semana #4', 'total' => 0.0, 'pagos' => []],
+    5 => ['nombre' => 'Semana #5', 'total' => 0.0, 'pagos' => []],
+];
+
+if ($desglosePlanilla !== null) {
+    foreach ($desglosePlanilla['filas'] as $filaP) {
+        $diaP = (int) date('j', strtotime($filaP['fecha']));
+        $sem = match (true) {
+            $diaP <= 7 => 1,
+            $diaP <= 14 => 2,
+            $diaP <= 21 => 3,
+            $diaP <= 28 => 4,
+            default => 5,
+        };
+        $semanasPlanilla[$sem]['total'] += (float) $filaP['monto'];
+        $semanasPlanilla[$sem]['pagos'][] = $filaP;
+    }
+    if ($semanasPlanilla[5]['total'] <= 0 && empty($semanasPlanilla[5]['pagos'])) {
+        unset($semanasPlanilla[5]);
+    }
+}
+
+$costoSemana1 = $semanasPlanilla[1]['total'] ?? 0.0;
+$proyeccionMensualPlanilla = $costoSemana1 > 0 ? ($costoSemana1 * 4) : (float) ($desglosePlanilla['total'] ?? 0.0);
+
 // Rellenar siempre los últimos 6 meses (aunque el cliente no tenga movimientos en algunos)
 $seriePorMes = [];
 foreach ($serieMensual as $fila) {
@@ -139,62 +172,95 @@ ob_start();
     </div>
 </div>
 
-<!-- ====== PLANILLA COMO GASTOS · detalle por frecuencia ====== -->
+<!-- ====== PLANILLA COMO GASTOS · detalle por frecuencia y semanas ====== -->
 <?php if ($desglosePlanilla !== null && $desglosePlanilla['pagos'] > 0): ?>
 <div class="tarjeta mb-6" style="padding:1.25rem">
-    <p class="etiqueta mb-1">
-        Pagos de planilla (gastos) · <?= htmlspecialchars($nombreMes) ?>
-    </p>
+    <div class="flex items-start justify-between flex-wrap gap-2 mb-1">
+        <div>
+            <p class="etiqueta-mono font-mono text-xs uppercase" style="color:var(--color-gold)">Nómina de colaboradores</p>
+            <h3 class="font-display text-lg font-semibold">Pagos de Nómina · <?= htmlspecialchars($nombreMes) ?></h3>
+        </div>
+    </div>
     <p class="text-xs mb-4" style="color:var(--color-ink-soft)">
-        Los salarios de colaboradores se registran como gastos de categoría
-        <strong>Nómina</strong> y entran al total de gastos del mes.
-        Detalle por frecuencia de pago (mensual · quincenal · por hora).
-        No se asignan a un cliente: son gastos generales del negocio.
+        Los salarios de colaboradores entran como gastos generales de <strong>Nómina</strong>. 
+        Monto actual pagado a la fecha y proyección mensual estimada.
     </p>
 
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <!-- Tarjetas de resumen de planilla solicitadas en Punto 3 -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <div class="tarjeta tarjeta-cifra gastos">
-            <p class="etiqueta">Total planilla</p>
-            <p class="valor" style="font-size:1.2rem"><?= htmlspecialchars(formatearMonto($desglosePlanilla['total'])) ?></p>
+            <p class="etiqueta">Planilla actual</p>
+            <p class="valor" style="font-size:1.3rem"><?= htmlspecialchars(formatearMonto($planillaActualReporte)) ?></p>
+            <p class="text-xs mt-1" style="color:var(--color-rojo)">Monto pagado al momento del reporte</p>
         </div>
-        <?php foreach ($desglosePlanilla['por_frecuencia'] as $frec): ?>
         <div class="tarjeta tarjeta-cifra">
-            <p class="etiqueta"><?= htmlspecialchars($frec['etiqueta']) ?></p>
-            <p class="valor" style="font-size:1.1rem"><?= htmlspecialchars(formatearMonto($frec['total'])) ?></p>
-            <p class="text-xs mt-1" style="color:var(--color-ink-soft)">
-                <?= (int) $frec['pagos'] ?> pago(s)
-            </p>
+            <p class="etiqueta">Proyección mensual</p>
+            <p class="valor" style="font-size:1.3rem"><?= htmlspecialchars(formatearMonto($proyeccionMensualPlanilla)) ?></p>
+            <p class="text-xs mt-1" style="color:var(--color-ink-soft)">1.ª semana × 4 (estimado, no real)</p>
         </div>
-        <?php endforeach; ?>
+        <div class="col-span-2 grid grid-cols-2 sm:grid-cols-<?= count($semanasPlanilla) ?> gap-2">
+            <?php foreach ($semanasPlanilla as $semData): ?>
+                <div class="tarjeta tarjeta-cifra" style="padding:0.75rem 1rem">
+                    <p class="etiqueta" style="font-size:0.7rem"><?= htmlspecialchars($semData['nombre']) ?></p>
+                    <p class="valor font-mono" style="font-size:1.05rem"><?= htmlspecialchars(formatearMonto($semData['total'])) ?></p>
+                    <p class="text-[0.68rem] mt-0.5" style="color:var(--color-ink-soft)"><?= count($semData['pagos']) ?> pago(s)</p>
+                </div>
+            <?php endforeach; ?>
+        </div>
     </div>
 
+    <!-- Tabla detallada semana a semana -->
     <div class="overflow-x-auto rounded-xl" style="border:1px solid var(--color-line)">
         <table class="tabla-modulo">
             <thead>
                 <tr>
-                    <th>Frecuencia</th>
+                    <th>Semana</th>
                     <th>Fecha</th>
                     <th>Colaborador</th>
-                    <th>Descripción</th>
+                    <th>Frecuencia</th>
+                    <th>Detalle</th>
                     <th class="text-right">Monto</th>
+                    <th>Estado</th>
                 </tr>
             </thead>
             <tbody>
                 <?php
+                $hoyFecha = date('Y-m-d');
                 $etiquetasFrec = ['mes' => 'Mensual', 'quincena' => 'Quincenal', 'semana' => 'Semanal', 'hora' => 'Por hora'];
                 foreach ($desglosePlanilla['filas'] as $filaPlanilla):
-                    $frecClave = (string) ($filaPlanilla['frecuencia_planilla'] ?? 'mes');
+                    $diaP = (int) date('j', strtotime($filaPlanilla['fecha']));
+                    $numSem = match (true) {
+                        $diaP <= 7 => 1,
+                        $diaP <= 14 => 2,
+                        $diaP <= 21 => 3,
+                        $diaP <= 28 => 4,
+                        default => 5,
+                    };
+                    $frecClave = (string) ($filaPlanilla['frecuencia_planilla'] ?? 'semana');
+                    $pagada = ($filaPlanilla['fecha'] <= $hoyFecha);
                 ?>
                 <tr>
                     <td>
-                        <span class="badge-tipo badge-gasto">
-                            <?= htmlspecialchars($etiquetasFrec[$frecClave] ?? 'Mensual') ?>
+                        <span class="font-mono text-xs font-semibold px-2 py-0.5 rounded" style="background:rgba(201,162,39,0.12); color:var(--color-gold);">
+                            Semana #<?= $numSem ?>
                         </span>
                     </td>
                     <td><?= htmlspecialchars(date('d/m/Y', strtotime($filaPlanilla['fecha']))) ?></td>
-                    <td><?= htmlspecialchars($filaPlanilla['colaborador'] !== '' ? $filaPlanilla['colaborador'] : '—') ?></td>
+                    <td><strong><?= htmlspecialchars($filaPlanilla['colaborador'] !== '' ? $filaPlanilla['colaborador'] : '—') ?></strong></td>
+                    <td>
+                        <span class="badge-tipo badge-gasto">
+                            <?= htmlspecialchars($etiquetasFrec[$frecClave] ?? 'Semanal') ?>
+                        </span>
+                    </td>
                     <td style="color:var(--color-ink-soft)"><?= htmlspecialchars($filaPlanilla['descripcion'] ?? '—') ?></td>
-                    <td class="text-right"><?= htmlspecialchars(formatearMonto((float) $filaPlanilla['monto'])) ?></td>
+                    <td class="text-right font-medium"><?= htmlspecialchars(formatearMonto((float) $filaPlanilla['monto'])) ?></td>
+                    <td>
+                        <?php if ($pagada): ?>
+                            <span class="badge-tipo badge-ingreso">✓ Pagado (actual)</span>
+                        <?php else: ?>
+                            <span class="badge-tipo" style="background:rgba(124,135,148,0.18); color:var(--color-ink-soft)">Programado</span>
+                        <?php endif; ?>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -251,8 +317,9 @@ ob_start();
                 </tbody>
             </table>
         </div>
-        <div class="max-w-xl mx-auto my-4 w-full">
-            <canvas id="grafico-por-cliente" height="160"></canvas>
+        <?php $altCliente = max(160, min(260, count($nombresClientes) * 32)); ?>
+        <div style="position: relative; height: <?= $altCliente ?>px; max-width: 480px; margin: 1rem auto; width: 100%;">
+            <canvas id="grafico-por-cliente"></canvas>
         </div>
     <?php endif; ?>
 </div>
@@ -266,16 +333,22 @@ ob_start();
                 Registra facturas o gastos con este cliente para ver la serie.
             </p>
         <?php else: ?>
-            <canvas id="grafico-ingresos-gastos" height="220"></canvas>
+            <div style="position: relative; height: 210px; width: 100%;">
+                <canvas id="grafico-ingresos-gastos"></canvas>
+            </div>
         <?php endif; ?>
     </div>
     <div class="tarjeta" style="padding:1.25rem">
         <p class="etiqueta mb-3">Gastos por categoría · <?= htmlspecialchars($nombreMes) ?><?= $nombreClienteFiltrado ? ' · ' . htmlspecialchars($nombreClienteFiltrado) : '' ?></p>
-        <canvas id="grafico-gastos-categoria" height="220"></canvas>
+        <div style="position: relative; height: 200px; width: 100%;">
+            <canvas id="grafico-gastos-categoria"></canvas>
+        </div>
     </div>
     <div class="tarjeta" style="padding:1.25rem">
         <p class="etiqueta mb-3">Ingresos por categoría · <?= htmlspecialchars($nombreMes) ?><?= $nombreClienteFiltrado ? ' · ' . htmlspecialchars($nombreClienteFiltrado) : '' ?></p>
-        <canvas id="grafico-ingresos-categoria" height="220"></canvas>
+        <div style="position: relative; height: 200px; width: 100%;">
+            <canvas id="grafico-ingresos-categoria"></canvas>
+        </div>
     </div>
     <div class="tarjeta" style="padding:1.25rem">
         <p class="etiqueta mb-3">Utilidad mensual (6 meses)<?= $nombreClienteFiltrado ? ' · ' . htmlspecialchars($nombreClienteFiltrado) : '' ?></p>
@@ -284,7 +357,9 @@ ob_start();
                 Sin datos de utilidad de este cliente en los últimos 6 meses.
             </p>
         <?php else: ?>
-            <canvas id="grafico-utilidad" height="220"></canvas>
+            <div style="position: relative; height: 210px; width: 100%;">
+                <canvas id="grafico-utilidad"></canvas>
+            </div>
         <?php endif; ?>
     </div>
 </div>
@@ -300,6 +375,7 @@ ob_start();
     const gastos = <?= json_encode($serieGastos) ?>;
     const utilidad = ingresos.map((v, i) => v - gastos[i]);
 
+    // Evolución mensual (estilo moderno: Teal + Dark Navy con bordes redondeados)
     const elIngresosGastos = document.getElementById('grafico-ingresos-gastos');
     if (elIngresosGastos) {
         new Chart(elIngresosGastos, {
@@ -307,11 +383,51 @@ ob_start();
             data: {
                 labels: meses,
                 datasets: [
-                    { label: 'Ingresos', data: ingresos, backgroundColor: '#2F7D5A' },
-                    { label: 'Gastos', data: gastos, backgroundColor: '#B23A2E' },
+                    {
+                        label: 'Ingresos',
+                        data: ingresos,
+                        backgroundColor: '#0d9488',
+                        hoverBackgroundColor: '#14b8a6',
+                        borderRadius: 6,
+                        barPercentage: 0.65,
+                    },
+                    {
+                        label: 'Gastos',
+                        data: gastos,
+                        backgroundColor: '#1e293b',
+                        hoverBackgroundColor: '#334155',
+                        borderRadius: 6,
+                        barPercentage: 0.65,
+                    },
                 ],
             },
-            options: { responsive: true, plugins: { legend: { position: 'bottom' } } },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { usePointStyle: true, boxWidth: 8, padding: 15 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ctx.dataset.label + ': $' + Number(ctx.raw).toLocaleString('en-US', {minimumFractionDigits: 2});
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        border: { display: false }
+                    },
+                    y: {
+                        grid: { color: 'rgba(0, 0, 0, 0.05)' },
+                        border: { display: false }
+                    }
+                }
+            },
         });
     }
 
@@ -321,9 +437,27 @@ ob_start();
             type: 'line',
             data: {
                 labels: meses,
-                datasets: [{ label: 'Utilidad', data: utilidad, borderColor: '#1B3A5C', backgroundColor: 'rgba(27,58,92,0.15)', fill: true, tension: 0.3 }],
+                datasets: [{
+                    label: 'Utilidad',
+                    data: utilidad,
+                    borderColor: '#0d9488',
+                    backgroundColor: 'rgba(13, 148, 136, 0.12)',
+                    fill: true,
+                    tension: 0.35,
+                    pointBackgroundColor: '#0d9488',
+                    pointRadius: 4,
+                    borderWidth: 2.5
+                }],
             },
-            options: { responsive: true, plugins: { legend: { display: false } } },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false }, border: { display: false } },
+                    y: { grid: { color: 'rgba(0,0,0,0.05)' }, border: { display: false } }
+                }
+            },
         });
     }
 
@@ -333,9 +467,21 @@ ob_start();
         type: 'doughnut',
         data: {
             labels: catGastos.length ? catGastos : ['Sin datos'],
-            datasets: [{ data: catGastos.length ? totGastos : [1], backgroundColor: catGastos.length ? ['#B23A2E', '#B07A22', '#1F6E82', '#7C8794', '#C9A227', '#1B3A5C'] : ['#E5E7EB'] }],
+            datasets: [{
+                data: catGastos.length ? totGastos : [1],
+                backgroundColor: catGastos.length ? ['#0d9488', '#1e293b', '#f59e0b', '#ef4444', '#6366f1', '#64748b'] : ['#E5E7EB'],
+                borderWidth: 2,
+                borderColor: '#ffffff'
+            }],
         },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '70%',
+            plugins: {
+                legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 12 } }
+            }
+        },
     });
 
     const catIngresos = <?= json_encode(array_column($ingresosPorCategoria, 'categoria'), JSON_UNESCAPED_UNICODE) ?>;
@@ -344,12 +490,24 @@ ob_start();
         type: 'doughnut',
         data: {
             labels: catIngresos.length ? catIngresos : ['Sin datos'],
-            datasets: [{ data: catIngresos.length ? totIngresos : [1], backgroundColor: catIngresos.length ? ['#2F7D5A', '#1F6E82', '#C9A227', '#7C8794'] : ['#E5E7EB'] }],
+            datasets: [{
+                data: catIngresos.length ? totIngresos : [1],
+                backgroundColor: catIngresos.length ? ['#0d9488', '#3b82f6', '#f59e0b', '#10b981', '#64748b'] : ['#E5E7EB'],
+                borderWidth: 2,
+                borderColor: '#ffffff'
+            }],
         },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '70%',
+            plugins: {
+                legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 12 } }
+            }
+        },
     });
 
-    // Ingresos vs gastos por cliente (mes seleccionado)
+    // Ingresos vs gastos por cliente (Barras horizontales modernas estilo Landing / Mobile)
     const elCliente = document.getElementById('grafico-por-cliente');
     if (elCliente) {
         new Chart(elCliente, {
@@ -357,16 +515,52 @@ ob_start();
             data: {
                 labels: <?= json_encode($nombresClientes, JSON_UNESCAPED_UNICODE) ?>,
                 datasets: [
-                    { label: 'Ingresos', data: <?= json_encode($ingresosClientes) ?>, backgroundColor: '#2F7D5A' },
-                    { label: 'Gastos', data: <?= json_encode($gastosClientes) ?>, backgroundColor: '#B23A2E' },
+                    {
+                        label: 'Ingresos',
+                        data: <?= json_encode($ingresosClientes) ?>,
+                        backgroundColor: '#0d9488',
+                        hoverBackgroundColor: '#14b8a6',
+                        borderRadius: 6,
+                        barThickness: 14,
+                    },
+                    {
+                        label: 'Gastos',
+                        data: <?= json_encode($gastosClientes) ?>,
+                        backgroundColor: '#1e293b',
+                        hoverBackgroundColor: '#334155',
+                        borderRadius: 6,
+                        barThickness: 14,
+                    },
                 ],
             },
             options: {
+                indexAxis: 'y',
                 responsive: true,
-                plugins: { legend: { position: 'bottom' } },
-                scales: {
-                    x: { ticks: { maxRotation: 45, minRotation: 0, autoSkip: false } },
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { usePointStyle: true, boxWidth: 8, padding: 16 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ctx.dataset.label + ': $' + Number(ctx.raw).toLocaleString('en-US', {minimumFractionDigits: 2});
+                            }
+                        }
+                    }
                 },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(0, 0, 0, 0.05)' },
+                        border: { display: false }
+                    },
+                    y: {
+                        grid: { display: false },
+                        border: { display: false },
+                        ticks: { autoSkip: false }
+                    }
+                }
             },
         });
     }

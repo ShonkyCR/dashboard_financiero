@@ -7,7 +7,8 @@
 declare(strict_types=1);
 
 // Detecta si estás en tu entorno local (XAMPP) o en el servidor real (InfinityFree)
-$esLocal = ($_SERVER['SERVER_NAME'] === 'localhost' || $_SERVER['SERVER_NAME'] === '127.0.0.1');
+$serverName = $_SERVER['SERVER_NAME'] ?? '';
+$esLocal = ($serverName === 'localhost' || $serverName === '127.0.0.1' || php_sapi_name() === 'cli');
 
 if ($esLocal) {
     // Configuración para XAMPP

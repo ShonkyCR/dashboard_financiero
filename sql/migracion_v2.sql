@@ -25,8 +25,9 @@ CREATE TABLE IF NOT EXISTS usuarios (
 ALTER TABLE facturas ADD COLUMN contacto_id INT DEFAULT NULL;
 ALTER TABLE facturas ADD COLUMN transaccion_id INT DEFAULT NULL;
 
--- Columna para el logo del negocio y categorías personalizadas:
+-- Columna para el logo del negocio, portada del dashboard y categorías personalizadas:
 ALTER TABLE configuracion ADD COLUMN logo VARCHAR(255) DEFAULT NULL;
+ALTER TABLE configuracion ADD COLUMN imagen_dashboard VARCHAR(255) DEFAULT NULL;
 ALTER TABLE configuracion ADD COLUMN categorias_ingreso TEXT DEFAULT NULL;
 ALTER TABLE configuracion ADD COLUMN categorias_gasto TEXT DEFAULT NULL;
 
