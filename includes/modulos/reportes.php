@@ -452,7 +452,7 @@ ob_start();
                     tooltip: {
                         callbacks: {
                             label: function(ctx) {
-                                return ctx.dataset.label + ': $' + Number(ctx.raw).toLocaleString('en-US', {minimumFractionDigits: 2});
+                                return ctx.dataset.label + ': $' + Math.round(Number(ctx.raw) || 0).toLocaleString('en-US');
                             }
                         }
                     }
@@ -628,7 +628,7 @@ ob_start();
                     tooltip: {
                         callbacks: {
                             label: function(ctx) {
-                                return ctx.dataset.label + ': $' + Number(ctx.raw).toLocaleString('en-US', {minimumFractionDigits: 2});
+                                return ctx.dataset.label + ': $' + Math.round(Number(ctx.raw) || 0).toLocaleString('en-US');
                             }
                         }
                     }

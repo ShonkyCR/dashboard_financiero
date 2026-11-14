@@ -376,6 +376,10 @@ function mostrarCarga() {
     cargaPagina.classList.remove('lista');
 }
 
+// Exponer globalmente para recuperación tras validaciones o cierres de modal
+window.ocultarCarga = ocultarCarga;
+window.mostrarCarga = mostrarCarga;
+
 // Respaldo por si el evento 'load' ya ocurrió o tarda demasiado.
 const ocultarCargaUnaVez = (() => {
     let hecho = false;
@@ -393,12 +397,14 @@ if (document.readyState === 'complete') {
 }
 setTimeout(ocultarCargaUnaVez, 1800);
 
+// Escucha en fase de burbujeo (false) para respetar validaciones y prevenciones de envío
 document.addEventListener('submit', (evento) => {
+    if (evento.defaultPrevented) return;
     const formulario = evento.target;
     if (formulario && formulario.tagName === 'FORM' && !formulario.hasAttribute('data-ajax')) {
         mostrarCarga();
     }
-}, true);
+}, false);
 
 // Escape cierra cualquier modal abierto (incluye los de los módulos)
 document.addEventListener('keydown', (evento) => {

@@ -65,10 +65,10 @@ function categoriasDePersonal(): array
     return ['Nómina', 'Contratistas'];
 }
 
-/** Formatea un monto numérico como moneda legible. Ej: 125000 -> "₡125,000.00" */
+/** Formatea un monto numérico como moneda legible sin decimales. Ej: 1250 -> "$1,250" */
 function formatearMonto(float $monto): string
 {
-    return MONEDA . number_format($monto, 2);
+    return MONEDA . number_format(round($monto), 0);
 }
 
 /**
@@ -661,6 +661,301 @@ function eliminarColaborador(PDO $pdo, int $id): bool
     return $pdo->prepare('DELETE FROM colaboradores WHERE id = :id')->execute([':id' => $id]);
 }
 
+/* =========================================================
+   NÓMINA SEMANAL (Estándar USA — Reglas y Flujo de Trabajo)
+   ========================================================= */
+
+/**
+ * Obtiene las nóminas semanales registradas en el mes (filtradas por fecha_pago).
+ * Asigna las etiquetas cronológicas "Semana 1", "Semana 2", etc.
+ */
+function obtenerNominasSemanalesMes(PDO $pdo, string $mes): array
+{
+    asegurarTablasBaseDeDatos($pdo);
+    if (!preg_match('/^\d{4}-\d{2}$/', $mes)) {
+        $mes = date('Y-m');
+    }
+    $desde = $mes . '-01';
+    $hasta = date('Y-m-t', strtotime($desde));
+
+    $stmt = $pdo->prepare(
+        "SELECT n.*,
+                (SELECT COUNT(*) FROM nomina_detalles d WHERE d.nomina_id = n.id AND d.sin_pago = 0) AS total_pagados,
+                (SELECT COUNT(*) FROM nomina_detalles d WHERE d.nomina_id = n.id) AS total_colaboradores
+         FROM nominas_semanales n
+         WHERE n.fecha_pago >= :desde AND n.fecha_pago <= :hasta
+         ORDER BY n.fecha_pago ASC, n.id ASC"
+    );
+    $stmt->execute([':desde' => $desde, ':hasta' => $hasta]);
+    $nominas = $stmt->fetchAll();
+
+    foreach ($nominas as $idx => &$nom) {
+        $nom['etiqueta_semana'] = 'Semana ' . ($idx + 1);
+        $nom['total'] = (float) $nom['total'];
+    }
+    unset($nom);
+
+    return $nominas;
+}
+
+/**
+ * Obtiene el resumen mensual de nómina según fecha de pago (Punto 5 del doc de Alonso).
+ */
+function obtenerResumenNominaMes(PDO $pdo, string $mes): array
+{
+    $nominas = obtenerNominasSemanalesMes($pdo, $mes);
+    $totalConfirmado = 0.0;
+    $totalBorrador = 0.0;
+    $confirmadasCount = 0;
+    $borradoresCount = 0;
+
+    foreach ($nominas as $n) {
+        if ($n['estado'] === 'confirmada') {
+            $totalConfirmado += (float) $n['total'];
+            $confirmadasCount++;
+        } else {
+            $totalBorrador += (float) $n['total'];
+            $borradoresCount++;
+        }
+    }
+
+    return [
+        'nominas' => $nominas,
+        'total_confirmado' => $totalConfirmado,
+        'total_borrador' => $totalBorrador,
+        'total_general' => $totalConfirmado + $totalBorrador,
+        'conteo_confirmadas' => $confirmadasCount,
+        'conteo_borradores' => $borradoresCount,
+        'conteo_total' => count($nominas),
+    ];
+}
+
+/**
+ * Obtiene una nómina semanal por ID junto con su detalle por colaborador.
+ */
+function obtenerNominaSemanal(PDO $pdo, int $id): ?array
+{
+    asegurarTablasBaseDeDatos($pdo);
+    $stmt = $pdo->prepare('SELECT * FROM nominas_semanales WHERE id = :id');
+    $stmt->execute([':id' => $id]);
+    $nomina = $stmt->fetch();
+    if (!$nomina) {
+        return null;
+    }
+
+    $stmtDet = $pdo->prepare('SELECT * FROM nomina_detalles WHERE nomina_id = :id ORDER BY id ASC');
+    $stmtDet->execute([':id' => $id]);
+    $nomina['detalles'] = $stmtDet->fetchAll();
+
+    return $nomina;
+}
+
+/**
+ * Busca si ya existe una nómina para la misma empresa y el mismo período trabajado (Regla 4 de Alonso:
+ * "Si ya existe una nómina para la misma empresa y el mismo período, abre el registro existente").
+ */
+function buscarNominaPorPeriodo(PDO $pdo, string $inicio, string $fin, int $empresaId = 1, int $excluirId = 0): ?array
+{
+    asegurarTablasBaseDeDatos($pdo);
+    $sql = 'SELECT * FROM nominas_semanales WHERE empresa_id = :empresa_id AND periodo_inicio = :inicio AND periodo_fin = :fin';
+    $params = [
+        ':empresa_id' => $empresaId,
+        ':inicio' => $inicio,
+        ':fin' => $fin,
+    ];
+    if ($excluirId > 0) {
+        $sql .= ' AND id != :excluir_id';
+        $params[':excluir_id'] = $excluirId;
+    }
+    $sql .= ' LIMIT 1';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $res = $stmt->fetch();
+    return $res ?: null;
+}
+
+/**
+ * Guarda o actualiza una nómina semanal y sus detalles.
+ * Si el estado es 'confirmada', sincroniza en transacciones como gasto de Nómina (Regla 5).
+ */
+function guardarNominaSemanal(PDO $pdo, array $datosNomina, array $detalles, ?string $usuarioNombre = null): array
+{
+    asegurarTablasBaseDeDatos($pdo);
+
+    $id = (int) ($datosNomina['id'] ?? 0);
+    $empresaId = (int) ($datosNomina['empresa_id'] ?? 1);
+    $periodoInicio = trim((string) ($datosNomina['periodo_inicio'] ?? ''));
+    $periodoFin = trim((string) ($datosNomina['periodo_fin'] ?? ''));
+    $fechaPago = trim((string) ($datosNomina['fecha_pago'] ?? ''));
+    $estado = in_array($datosNomina['estado'] ?? '', ['borrador', 'confirmada'], true) ? $datosNomina['estado'] : 'borrador';
+    $notas = trim((string) ($datosNomina['notas'] ?? ''));
+
+    if ($periodoInicio === '' || $periodoFin === '' || $fechaPago === '') {
+        return ['ok' => false, 'error' => 'Debes indicar el período trabajado y la fecha de pago.'];
+    }
+
+    // Regla 4: Duplicados y correcciones
+    // Si id == 0, verificar si ya existe una nómina para ese período
+    if ($id <= 0) {
+        $existente = buscarNominaPorPeriodo($pdo, $periodoInicio, $periodoFin, $empresaId);
+        if ($existente) {
+            $id = (int) $existente['id'];
+        }
+    }
+
+    // Validar detalles y calcular total
+    $totalSemanal = 0.0;
+    $detallesValidados = [];
+
+    foreach ($detalles as $det) {
+        $colabId = isset($det['colaborador_id']) && (int) $det['colaborador_id'] > 0 ? (int) $det['colaborador_id'] : null;
+        $nombre = trim((string) ($det['nombre_colaborador'] ?? ''));
+        if ($nombre === '') {
+            continue;
+        }
+        $sinPago = !empty($det['sin_pago']) ? 1 : 0;
+        $monto = $sinPago ? 0.0 : max(0.0, (float) ($det['monto'] ?? 0));
+
+        if (!$sinPago) {
+            $totalSemanal += $monto;
+        }
+
+        $detallesValidados[] = [
+            'colaborador_id' => $colabId,
+            'nombre_colaborador' => $nombre,
+            'monto' => $monto,
+            'sin_pago' => $sinPago,
+            'notas' => trim((string) ($det['notas'] ?? '')),
+        ];
+    }
+
+    $actualizadoPor = $usuarioNombre ?: 'Usuario';
+
+    $pdo->beginTransaction();
+    try {
+        if ($id > 0) {
+            $stmt = $pdo->prepare(
+                "UPDATE nominas_semanales
+                 SET empresa_id = :empresa_id, periodo_inicio = :inicio, periodo_fin = :fin,
+                     fecha_pago = :fecha_pago, estado = :estado, total = :total, notas = :notas,
+                     actualizado_por = :actualizado_por
+                 WHERE id = :id"
+            );
+            $stmt->execute([
+                ':empresa_id' => $empresaId,
+                ':inicio' => $periodoInicio,
+                ':fin' => $periodoFin,
+                ':fecha_pago' => $fechaPago,
+                ':estado' => $estado,
+                ':total' => $totalSemanal,
+                ':notas' => $notas,
+                ':actualizado_por' => $actualizadoPor,
+                ':id' => $id,
+            ]);
+            $nominaId = $id;
+        } else {
+            $stmt = $pdo->prepare(
+                "INSERT INTO nominas_semanales
+                    (empresa_id, periodo_inicio, periodo_fin, fecha_pago, estado, total, notas, actualizado_por)
+                 VALUES
+                    (:empresa_id, :inicio, :fin, :fecha_pago, :estado, :total, :notas, :actualizado_por)"
+            );
+            $stmt->execute([
+                ':empresa_id' => $empresaId,
+                ':inicio' => $periodoInicio,
+                ':fin' => $periodoFin,
+                ':fecha_pago' => $fechaPago,
+                ':estado' => $estado,
+                ':total' => $totalSemanal,
+                ':notas' => $notas,
+                ':actualizado_por' => $actualizadoPor,
+            ]);
+            $nominaId = (int) $pdo->lastInsertId();
+        }
+
+        // Reemplazar detalles
+        $pdo->prepare('DELETE FROM nomina_detalles WHERE nomina_id = :nomina_id')->execute([':nomina_id' => $nominaId]);
+
+        $insDet = $pdo->prepare(
+            "INSERT INTO nomina_detalles (nomina_id, colaborador_id, nombre_colaborador, monto, sin_pago, notas)
+             VALUES (:nomina_id, :colaborador_id, :nombre_colaborador, :monto, :sin_pago, :notas)"
+        );
+
+        foreach ($detallesValidados as $d) {
+            $insDet->execute([
+                ':nomina_id' => $nominaId,
+                ':colaborador_id' => $d['colaborador_id'],
+                ':nombre_colaborador' => $d['nombre_colaborador'],
+                ':monto' => $d['monto'],
+                ':sin_pago' => $d['sin_pago'],
+                ':notas' => $d['notas'] ?: null,
+            ]);
+        }
+
+        // Regla 5: Sincronización con transacciones (Gastos / Reportes / Estado de resultados)
+        // Eliminar registros previos de esta nómina en transacciones
+        $pdo->prepare("DELETE FROM transacciones WHERE nomina_id = :nomina_id")->execute([':nomina_id' => $nominaId]);
+
+        // Si está confirmada, insertar cada pago como gasto de Nómina
+        if ($estado === 'confirmada') {
+            $insTx = $pdo->prepare(
+                "INSERT INTO transacciones
+                    (tipo, monto, categoria, descripcion, fecha, contacto_id, origen, colaborador_id, nomina_id, frecuencia_planilla)
+                 VALUES
+                    ('gasto', :monto, 'Nómina', :descripcion, :fecha, NULL, 'planilla', :colaborador_id, :nomina_id, 'semana')"
+            );
+
+            // Formato amigable de fechas para la descripción
+            $fInicioStr = date('d/m', strtotime($periodoInicio));
+            $fFinStr = date('d/m', strtotime($periodoFin));
+
+            foreach ($detallesValidados as $d) {
+                if (!$d['sin_pago'] && $d['monto'] > 0) {
+                    $desc = 'Nómina semanal (' . $fInicioStr . ' - ' . $fFinStr . '): ' . $d['nombre_colaborador'];
+                    $insTx->execute([
+                        ':monto' => $d['monto'],
+                        ':descripcion' => $desc,
+                        ':fecha' => $fechaPago,
+                        ':colaborador_id' => $d['colaborador_id'],
+                        ':nomina_id' => $nominaId,
+                    ]);
+                }
+            }
+        }
+
+        $pdo->commit();
+        return [
+            'ok' => true,
+            'id' => $nominaId,
+            'estado' => $estado,
+            'mensaje' => $estado === 'confirmada' ? 'Nómina semanal confirmada e incorporada a gastos y reportes.' : 'Borrador de nómina semanal guardado.',
+        ];
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        return ['ok' => false, 'error' => 'Error al guardar la nómina: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Elimina una nómina semanal, sus detalles y sus transacciones asociadas.
+ */
+function eliminarNominaSemanal(PDO $pdo, int $id): bool
+{
+    asegurarTablasBaseDeDatos($pdo);
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare("DELETE FROM transacciones WHERE nomina_id = :id")->execute([':id' => $id]);
+        $pdo->prepare("DELETE FROM nomina_detalles WHERE nomina_id = :id")->execute([':id' => $id]);
+        $pdo->prepare("DELETE FROM nominas_semanales WHERE id = :id")->execute([':id' => $id]);
+        $pdo->commit();
+        return true;
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        return false;
+    }
+}
+
 /**
  * Estimado de costo mensual de planilla. Para quienes ganan por hora
  * se asume una jornada de tiempo completo (8h x 22 días ≈ 176h/mes)
@@ -808,119 +1103,15 @@ function pagosPlanillaEnMes(array $colaborador, string $mes): array
 }
 
 /**
- * Materializa los pagos de colaboradores activos como gastos de categoría
- * "Nómina" (origen=planilla) para el mes indicado, para que Reportes,
- * el dashboard y Gastos los incluyan automáticamente.
- *
- * Idempotente: crea/actualiza pagos de activos; no borra pagos históricos
- * de colaboradores hoy inactivos; al eliminar un colaborador se limpian
- * sus pagos del mes actual.
+ * Mantiene la integridad de transacciones de nómina:
+ * Elimina cualquier pago simulado antiguo que no esté respaldado por una nómina semanal confirmada (nomina_id).
  */
 function sincronizarPagosPlanillaComoGastos(PDO $pdo, ?string $mes = null): void
 {
-    if ($mes === null || !preg_match('/^\d{4}-\d{2}$/', $mes)) {
-        $mes = date('Y-m');
-    }
-
-    foreach ([
-        "ALTER TABLE transacciones ADD COLUMN origen ENUM('manual', 'planilla') NOT NULL DEFAULT 'manual'",
-        'ALTER TABLE transacciones ADD COLUMN colaborador_id INT DEFAULT NULL',
-        "ALTER TABLE transacciones ADD COLUMN frecuencia_planilla ENUM('mes', 'quincena', 'hora') DEFAULT NULL",
-    ] as $sqlAlter) {
-        try {
-            $pdo->exec($sqlAlter);
-        } catch (Throwable $e) {
-            // Columna ya existe.
-        }
-    }
-
-    $desde = $mes . '-01';
-    $hasta = date('Y-m-t', strtotime($desde));
-    $mesActual = date('Y-m');
-
-    $colaboradores = obtenerColaboradores($pdo);
-    $porId = [];
-    foreach ($colaboradores as $c) {
-        $porId[(int) $c['id']] = $c;
-    }
-
-    // Pagos esperados solo para activos
-    $esperados = []; // clave colaborador_id|fecha
-    foreach ($colaboradores as $c) {
-        if (!(int) $c['activo']) {
-            continue;
-        }
-        foreach (pagosPlanillaEnMes($c, $mes) as $pago) {
-            $clave = (int) $c['id'] . '|' . $pago['fecha'];
-            $esperados[$clave] = [
-                'colaborador_id' => (int) $c['id'],
-                'fecha' => $pago['fecha'],
-                'monto' => (float) $pago['monto'],
-                'descripcion' => $pago['descripcion'],
-                'frecuencia' => $pago['frecuencia'],
-            ];
-        }
-    }
-
-    $stmtExistentes = $pdo->prepare(
-        "SELECT id, colaborador_id, fecha, monto, descripcion, frecuencia_planilla
-         FROM transacciones
-         WHERE origen = 'planilla' AND tipo = 'gasto'
-           AND fecha >= :desde AND fecha <= :hasta"
-    );
-    $stmtExistentes->execute([':desde' => $desde, ':hasta' => $hasta]);
-    $existentes = $stmtExistentes->fetchAll();
-
-    $existePorClave = [];
-    foreach ($existentes as $e) {
-        $colabId = $e['colaborador_id'] !== null ? (int) $e['colaborador_id'] : 0;
-        $existePorClave[$colabId . '|' . $e['fecha']] = $e;
-    }
-
-    $ins = $pdo->prepare(
-        "INSERT INTO transacciones
-            (tipo, monto, categoria, descripcion, fecha, contacto_id, origen, colaborador_id, frecuencia_planilla)
-         VALUES ('gasto', :monto, 'Nómina', :descripcion, :fecha, NULL, 'planilla', :colaborador_id, :frecuencia)"
-    );
-    $upd = $pdo->prepare(
-        "UPDATE transacciones
-         SET monto = :monto, categoria = 'Nómina', descripcion = :descripcion,
-             frecuencia_planilla = :frecuencia, origen = 'planilla'
-         WHERE id = :id"
-    );
-
-    foreach ($esperados as $clave => $esp) {
-        if (isset($existePorClave[$clave])) {
-            $e = $existePorClave[$clave];
-            $cambioMonto = abs((float) $e['monto'] - $esp['monto']) > 0.009;
-            $cambioDesc = (string) ($e['descripcion'] ?? '') !== $esp['descripcion'];
-            $cambioFreq = (string) ($e['frecuencia_planilla'] ?? '') !== $esp['frecuencia'];
-            if ($cambioMonto || $cambioDesc || $cambioFreq) {
-                $upd->execute([
-                    ':monto' => $esp['monto'],
-                    ':descripcion' => $esp['descripcion'],
-                    ':frecuencia' => $esp['frecuencia'],
-                    ':id' => (int) $e['id'],
-                ]);
-            }
-            unset($existePorClave[$clave]);
-            continue;
-        }
-        $ins->execute([
-            ':monto' => $esp['monto'],
-            ':descripcion' => $esp['descripcion'],
-            ':fecha' => $esp['fecha'],
-            ':colaborador_id' => $esp['colaborador_id'],
-            ':frecuencia' => $esp['frecuencia'],
-        ]);
-    }
-
-    // En el mes actual, retira pagos de planilla obsoletos o de colaboradores eliminados
-    if ($mes === $mesActual && !empty($existePorClave)) {
-        $del = $pdo->prepare("DELETE FROM transacciones WHERE id = :id AND origen = 'planilla'");
-        foreach ($existePorClave as $claveRestante => $e) {
-            $del->execute([':id' => (int) $e['id']]);
-        }
+    asegurarTablasBaseDeDatos($pdo);
+    try {
+        $pdo->exec("DELETE FROM transacciones WHERE origen = 'planilla' AND nomina_id IS NULL");
+    } catch (Throwable $e) {
     }
 }
 
@@ -939,15 +1130,16 @@ function desglosePlanillaEnMes(PDO $pdo, string $mes): array
     $hasta = date('Y-m-t', strtotime($desde));
 
     $stmt = $pdo->prepare(
-        "SELECT t.id, t.fecha, t.monto, t.descripcion, t.frecuencia_planilla,
-                COALESCE(c.nombre, '') AS colaborador
+        "SELECT t.id, t.fecha, t.monto, t.descripcion, t.frecuencia_planilla, t.nomina_id,
+                COALESCE(d.nombre_colaborador, c.nombre, 'Colaborador') AS colaborador
          FROM transacciones t
+         LEFT JOIN nomina_detalles d ON d.nomina_id = t.nomina_id AND d.colaborador_id = t.colaborador_id
          LEFT JOIN colaboradores c ON c.id = t.colaborador_id
          WHERE t.origen = 'planilla'
            AND t.tipo = 'gasto'
            AND t.fecha >= :desde
            AND t.fecha <= :hasta
-         ORDER BY t.frecuencia_planilla, c.nombre, t.fecha"
+         ORDER BY t.fecha ASC, t.id ASC"
     );
     $stmt->execute([':desde' => $desde, ':hasta' => $hasta]);
     $filas = $stmt->fetchAll();
@@ -1297,10 +1489,39 @@ function asegurarTablasBaseDeDatos(PDO $pdo, bool $forzar = false): void
             id          INT AUTO_INCREMENT PRIMARY KEY,
             nombre      VARCHAR(120) NOT NULL,
             puesto      VARCHAR(80)  DEFAULT NULL,
-            tipo_pago   ENUM('hora', 'semana', 'quincena', 'mes') NOT NULL DEFAULT 'mes',
+            tipo_pago   ENUM('hora', 'semana', 'quincena', 'mes') NOT NULL DEFAULT 'semana',
             tarifa      DECIMAL(12,2) NOT NULL DEFAULT 0,
             activo      TINYINT(1) NOT NULL DEFAULT 1,
             creado_en   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB",
+
+        "CREATE TABLE IF NOT EXISTS nominas_semanales (
+            id                 INT AUTO_INCREMENT PRIMARY KEY,
+            empresa_id         INT NOT NULL DEFAULT 1,
+            periodo_inicio     DATE NOT NULL,
+            periodo_fin        DATE NOT NULL,
+            fecha_pago         DATE NOT NULL,
+            estado             ENUM('borrador', 'confirmada') NOT NULL DEFAULT 'borrador',
+            total              DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+            notas              VARCHAR(255) DEFAULT NULL,
+            actualizado_por    VARCHAR(120) DEFAULT NULL,
+            creado_en          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            actualizado_en     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_empresa_periodo (empresa_id, periodo_inicio, periodo_fin),
+            INDEX idx_fecha_pago (fecha_pago)
+        ) ENGINE=InnoDB",
+
+        "CREATE TABLE IF NOT EXISTS nomina_detalles (
+            id                 INT AUTO_INCREMENT PRIMARY KEY,
+            nomina_id          INT NOT NULL,
+            colaborador_id     INT DEFAULT NULL,
+            nombre_colaborador VARCHAR(120) NOT NULL,
+            monto              DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+            sin_pago           TINYINT(1) NOT NULL DEFAULT 0,
+            notas              VARCHAR(255) DEFAULT NULL,
+            creado_en          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_nomina (nomina_id),
+            INDEX idx_colaborador (colaborador_id)
         ) ENGINE=InnoDB",
 
         "CREATE TABLE IF NOT EXISTS contactos (
@@ -1350,17 +1571,24 @@ function asegurarTablasBaseDeDatos(PDO $pdo, bool $forzar = false): void
         'ALTER TABLE transacciones ADD COLUMN contacto_id INT DEFAULT NULL',
         'ALTER TABLE transacciones ADD COLUMN origen ENUM(\'manual\', \'planilla\') NOT NULL DEFAULT \'manual\'',
         'ALTER TABLE transacciones ADD COLUMN colaborador_id INT DEFAULT NULL',
+        'ALTER TABLE transacciones ADD COLUMN nomina_id INT DEFAULT NULL',
         'ALTER TABLE transacciones MODIFY COLUMN frecuencia_planilla ENUM(\'mes\', \'quincena\', \'semana\', \'hora\') DEFAULT NULL',
         'ALTER TABLE facturas ADD COLUMN contacto_id INT DEFAULT NULL',
         'ALTER TABLE facturas ADD COLUMN transaccion_id INT DEFAULT NULL',
         'ALTER TABLE contactos ADD COLUMN proyecto_finalizado TINYINT(1) NOT NULL DEFAULT 0',
-        'ALTER TABLE colaboradores MODIFY COLUMN tipo_pago ENUM(\'hora\', \'semana\', \'quincena\', \'mes\') NOT NULL DEFAULT \'mes\'',
+        'ALTER TABLE colaboradores MODIFY COLUMN tipo_pago ENUM(\'hora\', \'semana\', \'quincena\', \'mes\') NOT NULL DEFAULT \'semana\'',
     ] as $sqlAlter) {
         try {
             $pdo->exec($sqlAlter);
         } catch (Throwable $e) {
             // La columna ya existe o ya está actualizada: se ignora.
         }
+    }
+
+    // Limpia pagos de planilla simulados matemáticamente para dar paso a la nómina semanal real de USA
+    try {
+        $pdo->exec("DELETE FROM transacciones WHERE origen = 'planilla' AND nomina_id IS NULL");
+    } catch (Throwable $e) {
     }
 
     if (session_status() === PHP_SESSION_ACTIVE) {

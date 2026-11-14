@@ -5,9 +5,9 @@
 
 /* ---------------- Facturas ---------------- */
 function formatearMontoJS(valor) {
-    return '$' + Number(valor).toLocaleString('es-HN', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
+    return '$' + Math.round(Number(valor) || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
     });
 }
 

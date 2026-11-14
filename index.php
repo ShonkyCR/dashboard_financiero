@@ -471,8 +471,8 @@ $etiquetaSegundoModo = $esSuperadmin ? 'Detalle (auditoría)' : 'Movimientos';
 
             <div class="mb-3">
                 <label class="text-sm font-medium block mb-1">¿Cuánto?</label>
-                <input type="number" step="0.01" min="0.01" name="monto" id="input-monto" required
-                       placeholder="0.00" class="campo-claro">
+                <input type="number" step="any" min="0" inputmode="numeric" name="monto" id="input-monto" required
+                       placeholder="0" class="campo-claro sin-spinners">
             </div>
 
             <div class="mb-3">

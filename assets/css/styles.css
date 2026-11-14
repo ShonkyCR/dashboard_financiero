@@ -1854,3 +1854,156 @@ body.tema-oscuro .hallazgo-recomendacion {
 
 /* ---- Badge estado semáforo en header ---- */
 #badge-semaforo-header { white-space: nowrap; }
+
+/* =========================================================
+   NÓMINA SEMANAL — Estilos de modal, inputs y botones hover
+   ========================================================= */
+
+/* Quitar flechas/spinners de subir y bajar en inputs numéricos */
+.sin-spinners::-webkit-outer-spin-button,
+.sin-spinners::-webkit-inner-spin-button,
+input[type="number"].sin-spinners::-webkit-outer-spin-button,
+input[type="number"].sin-spinners::-webkit-inner-spin-button,
+.modal-tarjeta input[type="number"]::-webkit-outer-spin-button,
+.modal-tarjeta input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none !important;
+    margin: 0 !important;
+}
+
+.sin-spinners,
+input[type="number"].sin-spinners,
+.modal-tarjeta input[type="number"] {
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
+}
+
+/* Botones con efectos hover de alta calidad en el Modal de Nómina */
+.btn-modal-cancelar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.55rem 1.15rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    border: 1px solid var(--color-line);
+    background: transparent;
+    color: var(--color-ink-soft);
+    cursor: pointer;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-modal-cancelar:hover {
+    background: rgba(148, 163, 184, 0.14);
+    border-color: var(--color-ink-soft);
+    color: var(--color-ink);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+.btn-modal-cancelar:active {
+    transform: translateY(0) scale(0.98);
+}
+
+.btn-modal-borrador {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.55rem 1.25rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    border: 1px solid rgba(217, 119, 6, 0.4);
+    background: rgba(217, 119, 6, 0.08);
+    color: #b45309;
+    cursor: pointer;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.tema-oscuro .btn-modal-borrador {
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.35);
+    background: rgba(251, 191, 36, 0.1);
+}
+.btn-modal-borrador:hover {
+    background: #d97706;
+    color: #ffffff !important;
+    border-color: #d97706;
+    transform: translateY(-1.5px);
+    box-shadow: 0 6px 16px rgba(217, 119, 6, 0.28);
+}
+.btn-modal-borrador:active {
+    transform: translateY(0) scale(0.98);
+}
+
+.btn-modal-confirmar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.58rem 1.35rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background: var(--color-ink);
+    color: var(--color-paper) !important;
+    cursor: pointer;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.btn-modal-confirmar:hover {
+    background: #0f766e;
+    color: #ffffff !important;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(15, 118, 110, 0.35);
+}
+.btn-modal-confirmar:active {
+    transform: translateY(0) scale(0.98);
+}
+
+.btn-modal-agregar-fila {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1.1rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    border: 1px solid var(--color-line);
+    background: var(--color-paper-card);
+    color: var(--color-ink);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-modal-agregar-fila:hover {
+    border-color: var(--color-teal);
+    color: var(--color-teal);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(31, 110, 130, 0.15);
+}
+.btn-modal-agregar-fila:active {
+    transform: translateY(0) scale(0.98);
+}
+
+.btn-fila-remover {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-ink-soft);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.btn-fila-remover:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.25);
+    transform: scale(1.1);
+}
+.btn-fila-remover:active {
+    transform: scale(0.95);
+}

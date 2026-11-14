@@ -206,7 +206,7 @@ ob_start();
             </div>
             <div class="mb-3">
                 <label class="text-sm font-medium block mb-1">Monto</label>
-                <input type="number" step="0.01" min="0.01" name="monto" id="monto-factura" required class="campo-claro">
+                <input type="number" step="any" min="0" inputmode="numeric" name="monto" id="monto-factura" required placeholder="0" class="campo-claro sin-spinners">
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <div>
