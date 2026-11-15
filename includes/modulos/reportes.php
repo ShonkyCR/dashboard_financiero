@@ -90,8 +90,15 @@ if ($desglosePlanilla !== null) {
     }
 }
 
-$costoSemana1 = $semanasPlanilla[1]['total'] ?? 0.0;
-$proyeccionMensualPlanilla = $costoSemana1 > 0 ? ($costoSemana1 * 4) : (float) ($desglosePlanilla['total'] ?? 0.0);
+$semanasConPago = array_filter($semanasPlanilla, fn($s) => $s['total'] > 0);
+if (!empty($semanasConPago)) {
+    // Si hay semanas con pagos, proyectamos según el promedio semanal pagado × 4 semanas
+    $promedioSemanal = array_sum(array_column($semanasConPago, 'total')) / count($semanasConPago);
+    $totalRealMes = (float) ($desglosePlanilla['total'] ?? 0.0);
+    $proyeccionMensualPlanilla = max($totalRealMes, $promedioSemanal * 4);
+} else {
+    $proyeccionMensualPlanilla = (float) ($desglosePlanilla['total'] ?? 0.0);
+}
 
 // Rellenar siempre los últimos 6 meses (aunque el cliente no tenga movimientos en algunos)
 $seriePorMes = [];
@@ -197,7 +204,7 @@ ob_start();
         <div class="tarjeta tarjeta-cifra">
             <p class="etiqueta">Proyección mensual</p>
             <p class="valor" style="font-size:1.3rem"><?= htmlspecialchars(formatearMonto($proyeccionMensualPlanilla)) ?></p>
-            <p class="text-xs mt-1" style="color:var(--color-ink-soft)">1.ª semana × 4 (estimado, no real)</p>
+            <p class="text-xs mt-1" style="color:var(--color-ink-soft)">Promedio semanal × 4 (estimado, no real)</p>
         </div>
         <div class="col-span-2 grid grid-cols-2 sm:grid-cols-<?= count($semanasPlanilla) ?> gap-2">
             <?php foreach ($semanasPlanilla as $semData): ?>
