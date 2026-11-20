@@ -72,20 +72,62 @@ $semanasPlanilla = [
     5 => ['nombre' => 'Semana #5', 'total' => 0.0, 'pagos' => []],
 ];
 
+// Sincronizar numeración de semanas con el módulo de Nómina (orden cronológico de fecha_pago)
+$nominasMesReporte = obtenerNominasSemanalesMes($pdo, $mesConsultado);
+$mapaNominaSemana = [];
+$idxConfirmada = 1;
+foreach ($nominasMesReporte as $nomR) {
+    if ($nomR['estado'] === 'confirmada') {
+        $mapaNominaSemana[(int) $nomR['id']] = $idxConfirmada;
+        $idxConfirmada++;
+    }
+}
+
+$mapaFechaSemana = [];
+if ($desglosePlanilla !== null) {
+    $fechasSinNomina = [];
+    foreach ($desglosePlanilla['filas'] as $f) {
+        if (empty($f['nomina_id']) || !isset($mapaNominaSemana[(int) $f['nomina_id']])) {
+            $fechasSinNomina[$f['fecha']] = true;
+        }
+    }
+    ksort($fechasSinNomina);
+    $idxFecha = $idxConfirmada;
+    foreach (array_keys($fechasSinNomina) as $fFecha) {
+        $mapaFechaSemana[$fFecha] = min(5, $idxFecha);
+        $idxFecha++;
+    }
+}
+
+$obtenerSemanaFila = function(array $fila) use ($mapaNominaSemana, $mapaFechaSemana): int {
+    $nid = (int) ($fila['nomina_id'] ?? 0);
+    if ($nid > 0 && isset($mapaNominaSemana[$nid])) {
+        return min(5, max(1, $mapaNominaSemana[$nid]));
+    }
+    $fec = (string) ($fila['fecha'] ?? '');
+    if (isset($mapaFechaSemana[$fec])) {
+        return min(5, max(1, $mapaFechaSemana[$fec]));
+    }
+    $diaP = (int) date('j', strtotime($fec ?: 'now'));
+    return match (true) {
+        $diaP <= 7 => 1,
+        $diaP <= 14 => 2,
+        $diaP <= 21 => 3,
+        $diaP <= 28 => 4,
+        default => 5,
+    };
+};
+
 if ($desglosePlanilla !== null) {
     foreach ($desglosePlanilla['filas'] as $filaP) {
-        $diaP = (int) date('j', strtotime($filaP['fecha']));
-        $sem = match (true) {
-            $diaP <= 7 => 1,
-            $diaP <= 14 => 2,
-            $diaP <= 21 => 3,
-            $diaP <= 28 => 4,
-            default => 5,
-        };
+        $sem = $obtenerSemanaFila($filaP);
+        if (!isset($semanasPlanilla[$sem])) {
+            $semanasPlanilla[$sem] = ['nombre' => 'Semana #' . $sem, 'total' => 0.0, 'pagos' => []];
+        }
         $semanasPlanilla[$sem]['total'] += (float) $filaP['monto'];
         $semanasPlanilla[$sem]['pagos'][] = $filaP;
     }
-    if ($semanasPlanilla[5]['total'] <= 0 && empty($semanasPlanilla[5]['pagos'])) {
+    if (isset($semanasPlanilla[5]) && $semanasPlanilla[5]['total'] <= 0 && empty($semanasPlanilla[5]['pagos'])) {
         unset($semanasPlanilla[5]);
     }
 }
@@ -236,14 +278,7 @@ ob_start();
                 $hoyFecha = date('Y-m-d');
                 $etiquetasFrec = ['mes' => 'Mensual', 'quincena' => 'Quincenal', 'semana' => 'Semanal', 'hora' => 'Por hora'];
                 foreach ($desglosePlanilla['filas'] as $filaPlanilla):
-                    $diaP = (int) date('j', strtotime($filaPlanilla['fecha']));
-                    $numSem = match (true) {
-                        $diaP <= 7 => 1,
-                        $diaP <= 14 => 2,
-                        $diaP <= 21 => 3,
-                        $diaP <= 28 => 4,
-                        default => 5,
-                    };
+                    $numSem = $obtenerSemanaFila($filaPlanilla);
                     $frecClave = (string) ($filaPlanilla['frecuencia_planilla'] ?? 'semana');
                     $pagada = ($filaPlanilla['fecha'] <= $hoyFecha);
                 ?>
